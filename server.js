@@ -318,7 +318,4 @@ io.on('connection', socket => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Okey sunucusu ${PORT} portunda çalışıyor`));
 
-// Tüm bilinmeyen GET isteklerini index.html'e yönlendir (SPA desteği için)
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
+
