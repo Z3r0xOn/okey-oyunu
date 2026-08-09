@@ -1,0 +1,16 @@
+{
+  "name": "okey-oda",
+  "version": "1.0.0",
+  "description": "Arkadaşlarla oynanabilen tarayıcı tabanlı Okey oyunu (oda + sesli sohbet)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

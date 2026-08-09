@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Okey Masası — Arkadaşlarla Online Okey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div id="toast" class="toast" hidden></div>
+
+<!-- ===================== LOBBY ===================== -->
+<section id="view-lobby" class="view view-lobby">
+  <div class="lobby-card">
+    <h1 class="logo">Okey<span class="logo-accent">Masası</span></h1>
+    <p class="tagline">Gösterge açılsın, kupa karışsın. Arkadaşlarınla aynı masaya otur.</p>
+
+    <label class="field">
+      <span>Adın</span>
+      <input id="nameInput" maxlength="20" placeholder="örn. Ayşe" autocomplete="off" />
+    </label>
+
+    <div class="lobby-actions">
+      <button id="createRoomBtn" class="btn btn-primary">Yeni Oda Aç</button>
+
+      <div class="divider"><span>ya da</span></div>
+
+      <label class="field">
+        <span>Oda Kodu</span>
+        <input id="codeInput" maxlength="5" placeholder="ör. K7X2M" autocomplete="off" style="text-transform:uppercase" />
+      </label>
+      <button id="joinRoomBtn" class="btn btn-secondary">Odaya Katıl</button>
+    </div>
+
+    <p class="hint">Oda kodunu arkadaşlarına gönder, aynı kodla katılsınlar.</p>
+  </div>
+</section>
+
+<!-- ===================== WAITING / SEATING ===================== -->
+<section id="view-waiting" class="view view-waiting" hidden>
+  <header class="table-header">
+    <div class="room-code-badge">Oda Kodu: <strong id="roomCodeLabel">-----</strong> <button id="copyCodeBtn" class="mini-btn" title="Kodu kopyala">⧉</button></div>
+    <button id="voiceToggleWaiting" class="mini-btn voice-btn">🎤 Sesi Aç</button>
+    <button id="chatToggleBtn" class="mini-btn">💬 Sohbet</button>
+  </header>
+
+  <div class="seating-area">
+    <h2>Yerini Seç</h2>
+    <p class="hint">4 oyuncu masaya oturur, kalanlar izleyici olarak sesli sohbete katılabilir. (Maksimum 8 kişi)</p>
+
+    <div class="seat-grid" id="seatGrid">
+      <!-- 4 seat butonu JS ile doldurulur -->
+    </div>
+
+    <button id="spectatorBtn" class="btn btn-ghost">İzleyici Ol</button>
+
+    <div class="players-list" id="playersList"></div>
+
+    <button id="startGameBtn" class="btn btn-primary" hidden>Oyunu Başlat</button>
+    <p id="startHint" class="hint"></p>
+  </div>
+</section>
+
+<!-- ===================== GAME TABLE ===================== -->
+<section id="view-game" class="view view-game" hidden>
+  <header class="table-header">
+    <div class="room-code-badge">Oda: <strong id="roomCodeLabel2">-----</strong></div>
+    <div id="turnBanner" class="turn-banner">-</div>
+    <div class="header-actions">
+      <button id="voiceToggleGame" class="mini-btn voice-btn">🎤 Sesi Aç</button>
+      <button id="chatToggleBtn2" class="mini-btn">💬 Sohbet</button>
+    </div>
+  </header>
+
+  <div class="okey-table">
+    <div class="felt">
+      <div class="indicator-area">
+        <div class="indicator-label">Gösterge</div>
+        <div id="indicatorTile" class="tile tile-back"></div>
+        <div class="okey-label">Okey: <span id="okeySpecLabel">-</span></div>
+      </div>
+
+      <div class="center-piles">
+        <button id="deckPile" class="pile deck-pile" title="Kupadan çek">
+          <span id="deckCount">0</span>
+          <small>KUPA</small>
+        </button>
+        <button id="discardPile" class="pile discard-pile" title="Ortadan çek">
+          <div id="discardTopTile" class="tile tile-empty"></div>
+          <small>ORTA</small>
+        </button>
+      </div>
+
+      <!-- Diğer oyuncuların koltukları (üst / sol / sağ) -->
+      <div class="seat-remote seat-top" id="seatTop"></div>
+      <div class="seat-remote seat-left" id="seatLeft"></div>
+      <div class="seat-remote seat-right" id="seatRight"></div>
+    </div>
+
+    <div class="action-bar">
+      <button id="drawDeckBtn" class="btn btn-small">Kupadan Çek</button>
+      <button id="drawDiscardBtn" class="btn btn-small">Ortadan Çek</button>
+      <button id="declareWinBtn" class="btn btn-small btn-gold">Elimi Bitirdim</button>
+      <button id="manualWinBtn" class="btn btn-small btn-ghost">Elimi Açıyorum</button>
+      <button id="newHandBtn" class="btn btn-small btn-ghost" hidden>Yeni El</button>
+    </div>
+
+    <div class="my-rack" id="myRack">
+      <!-- kendi taşların JS ile buraya render edilir -->
+    </div>
+  </div>
+</section>
+
+<!-- ===================== CHAT PANEL (paylaşılan) ===================== -->
+<aside id="chatPanel" class="chat-panel" hidden>
+  <div class="chat-header">
+    <span>Sohbet</span>
+    <button id="chatCloseBtn" class="mini-btn">✕</button>
+  </div>
+  <div id="chatMessages" class="chat-messages"></div>
+  <form id="chatForm" class="chat-form">
+    <input id="chatInput" maxlength="500" placeholder="Mesaj yaz..." autocomplete="off" />
+    <button type="submit" class="mini-btn">Gönder</button>
+  </form>
+</aside>
+
+<!-- ===================== MANUAL WIN DIALOG ===================== -->
+<div id="manualWinDialog" class="modal" hidden>
+  <div class="modal-card">
+    <h3 id="manualWinTitle">Bitiş İddiası</h3>
+    <div id="manualWinTiles" class="manual-win-tiles"></div>
+    <div class="modal-actions" id="manualWinActions"></div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="client.js"></script>
+</body>
+</html>
