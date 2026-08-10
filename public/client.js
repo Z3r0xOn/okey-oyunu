@@ -5,11 +5,11 @@
   let myId = null;
   let room = null;      // publicRoomState
   let game = null;      // personalGameView
-  let selectedIds = new Set();
+  let selectedTileId = null;
   let voiceOn = false;
   let localStream = null;
-  const peerConnections = {};
-  const audioEls = {};
+  const peerConnections = {}; // peerId -> RTCPeerConnection
+  const audioEls = {};        // peerId -> <audio>
   let prevHandIds = [];
   let prevDiscardTopId = null;
   let indicatorRevealed = false;
@@ -34,6 +34,18 @@
     toast.hidden = false;
     clearTimeout(showToast._t);
     showToast._t = setTimeout(() => { toast.hidden = true; }, 3200);
+  }
+
+  function resetToLobby() {
+    room = null;
+    game = null;
+    selectedTileId = null;
+    prevHandIds = [];
+    prevDiscardTopId = null;
+    indicatorRevealed = false;
+    stopVoice();
+    chatMessages.innerHTML = '';
+    showView('lobby');
   }
 
   // ============================================================
@@ -107,7 +119,6 @@
   socket.on('roomUpdate', state => {
     room = state;
     renderWaiting();
-    renderScoreboard();
     if (state.gameActive) showView('game');
   });
 
@@ -141,19 +152,6 @@
       : 'Oda kurucusunun oyunu başlatmasını bekleyin.';
   }
 
-  function renderScoreboard() {
-    const host = $('#scoreboard');
-    if (!host || !room) return;
-    host.innerHTML = '';
-    room.players.filter(p => p.seat !== null).sort((a, b) => a.seat - b.seat).forEach(p => {
-      const row = document.createElement('div');
-      row.className = 'score-row';
-      const pts = (room.scores && room.scores[p.id]) || 0;
-      row.innerHTML = `<span class="score-name">${escapeHtml(p.name)}</span><span class="score-val">${pts}</span>`;
-      host.appendChild(row);
-    });
-  }
-
   // ============================================================
   // GAME
   // ============================================================
@@ -176,9 +174,9 @@
     return String(tile.number);
   }
 
-  function tileEl(tile, { clickable = false, faceDown = false, small = false } = {}) {
+  function tileEl(tile, { clickable = false, faceDown = false } = {}) {
     const el = document.createElement('div');
-    el.className = 'tile' + (small ? ' tile-sm' : '');
+    el.className = 'tile';
     if (faceDown) { el.classList.add('tile-back'); return el; }
     if (!tile) { el.classList.add('tile-empty'); return el; }
     if (tile.joker) el.classList.add('is-joker');
@@ -190,49 +188,37 @@
     if (clickable) {
       el.classList.add('clickable');
       el.addEventListener('click', () => onTileClick(tile));
-      if (selectedIds.has(tile.id)) el.classList.add('selected');
+      if (tile.id === selectedTileId) el.classList.add('selected');
     }
     return el;
   }
 
-  function isMyTurnPlayPhase() {
-    if (!game || game.finished) return false;
-    const seat = mySeat();
-    return seat !== null && game.turnIndex === seat && game.phase === 'play';
-  }
-
   function onTileClick(tile) {
-    if (selectedIds.has(tile.id)) selectedIds.delete(tile.id);
-    else selectedIds.add(tile.id);
-    renderGame();
-  }
+    if (!game || game.finished) return;
+    const seat = mySeat();
+    if (seat === null || game.turnIndex !== seat || game.phase !== 'discard') {
+      showToast('Önce taş çekmen gerekiyor / sıra sende değil.');
+      return;
+    }
 
-  function onMeldClick(meldId) {
-    if (!isMyTurnPlayPhase()) { showToast('Sıra sende değil / önce taş çekmelisin.'); return; }
-    if (selectedIds.size !== 1) { showToast('Masaya işlemek için elden tam olarak 1 taş seç.'); return; }
-    const tileId = [...selectedIds][0];
-    socket.emit('addToMeld', { meldId, tileId });
-    selectedIds.clear();
+    // Bir kez tıkla: taşı seç. Aynı taşa tekrar tıkla: normal taş at.
+    // Bitmek istiyorsan bitiş taşını seçip "Bitir" düğmesine bas.
+    if (selectedTileId === tile.id) {
+      socket.emit('discardTile', tile.id);
+      selectedTileId = null;
+    } else {
+      selectedTileId = tile.id;
+      renderGame();
+    }
   }
 
   $('#deckPile').addEventListener('click', () => { pulse($('#deckPile')); socket.emit('drawTile', 'deck'); });
   $('#discardPile').addEventListener('click', () => { pulse($('#discardPile')); socket.emit('drawTile', 'discard'); });
-
-  $('#openRunBtn').addEventListener('click', () => {
-    if (selectedIds.size < 3) { showToast('Per açmak için en az 3 taş seç.'); return; }
-    socket.emit('openMeld', { kind: 'run', tileIds: [...selectedIds] });
-    selectedIds.clear();
-  });
-  $('#openPairBtn').addEventListener('click', () => {
-    if (selectedIds.size < 2 || selectedIds.size % 2 !== 0) { showToast('Çift açmak için çift sayıda (en az 4 çift = 8 taş, açılıştan sonra en az 1 çift) taş seç.'); return; }
-    socket.emit('openMeld', { kind: 'pair', tileIds: [...selectedIds] });
-    selectedIds.clear();
-  });
-  $('#discardBtn').addEventListener('click', () => {
-    if (selectedIds.size !== 1) { showToast('Atmak için elden tam olarak 1 taş seç.'); return; }
-    const tileId = [...selectedIds][0];
-    socket.emit('discardTile', tileId);
-    selectedIds.clear();
+  $('#drawDeckBtn').addEventListener('click', () => socket.emit('drawTile', 'deck'));
+  $('#drawDiscardBtn').addEventListener('click', () => socket.emit('drawTile', 'discard'));
+  $('#declareWinBtn').addEventListener('click', () => {
+    socket.emit('declareWin', selectedTileId);
+    selectedTileId = null;
   });
 
   function pulse(el) {
@@ -244,6 +230,7 @@
     if (!game || !room) return;
     const seat = mySeat();
 
+    // Gösterge — ilk gösterimde açılış animasyonu
     const indicatorHost = $('#indicatorTile');
     indicatorHost.className = 'tile';
     if (game.indicator.joker) indicatorHost.classList.add('is-joker');
@@ -259,13 +246,16 @@
 
     $('#deckCount').textContent = game.deckCount;
 
+    // Orta yığın — değiştiyse pop animasyonu
     const discardHost = $('#discardTopTile');
     discardHost.className = 'tile';
     if (game.discardTop) {
       if (game.discardTop.joker) discardHost.classList.add('is-joker');
       else discardHost.classList.add('color-' + game.discardTop.color);
       discardHost.textContent = tileLabel(game.discardTop);
-      if (game.discardTop.id !== prevDiscardTopId) discardHost.classList.add('tile-pop');
+      if (game.discardTop.id !== prevDiscardTopId) {
+        discardHost.classList.add('tile-pop');
+      }
       prevDiscardTopId = game.discardTop.id;
     } else {
       discardHost.classList.add('tile-empty');
@@ -273,77 +263,17 @@
     }
 
     const turnPlayer = room.players.find(p => p.seat === game.turnIndex);
-    if (game.finished) {
-      let text;
-      if (game.winnerId) text = `🏆 ${nameOf(game.winnerId)} eli bitirdi! (+kazanç)`;
-      else text = 'El berabere bitti (kupa tükendi)';
-      $('#turnBanner').textContent = text;
-    } else {
-      const phaseLabel = game.phase === 'draw' ? 'taş çeksin' : 'açma / işleme yapabilir, sonra taş atsın';
-      $('#turnBanner').textContent = turnPlayer ? `Sıra: ${turnPlayer.name}${game.turnIndex === seat ? ' (Sen)' : ''} — ${phaseLabel}` : '-';
-    }
+    $('#turnBanner').textContent = game.finished
+      ? (game.winnerId ? `🏆 ${nameOf(game.winnerId)} eli bitirdi!` : 'El bitti')
+      : (turnPlayer ? `Sıra: ${turnPlayer.name}${game.turnIndex === seat ? ' (Sen)' : ''} — ${game.phase === 'draw' ? 'taş çeksin' : 'taş atsın / bitirsin'}` : '-');
 
     $('#newHandBtn').hidden = !(game.finished && room.hostId === myId);
-    $('#mustUseHint').hidden = !(game.mustUseDrawnTile && !game.usedDrawnTileInMeld && game.turnIndex === seat);
-    $('#openThresholdLabel').textContent = game.runOpenValue > 0
-      ? `Şu an per açmak için > ${game.runOpenValue} gerekiyor`
-      : `El açmak için per toplamı ≥ 51 ya da en az 4 çift gerekiyor`;
-    $('#amIOpenLabel').textContent = (seat !== null && game.openedBy && myId && game.openedBy[myId])
-      ? '✅ Elini açtın'
-      : '🔒 Henüz elini açmadın';
+    $('#declareWinBtn').disabled = game.finished || game.phase !== 'discard' || seat !== game.turnIndex;
+    $('#drawDeckBtn').disabled = game.finished || game.phase !== 'draw' || seat !== game.turnIndex;
+    $('#drawDiscardBtn').disabled = game.finished || game.phase !== 'draw' || seat !== game.turnIndex || !game.discardTop;
 
-    const actionsEnabled = isMyTurnPlayPhase();
-    $('#openRunBtn').disabled = !actionsEnabled;
-    $('#openPairBtn').disabled = !actionsEnabled;
-    $('#discardBtn').disabled = !actionsEnabled;
-
-    if (game.finished && game.scores) {
-      renderHandResult();
-    } else {
-      $('#handResult').hidden = true;
-    }
-
-    renderMelds();
     renderRackAnimated();
     renderRemoteSeats(seat);
-    renderScoreboard();
-  }
-
-  function renderHandResult() {
-    const box = $('#handResult');
-    box.hidden = false;
-    box.innerHTML = '<h4>El Sonucu</h4>' + Object.entries(game.scores).map(([pid, delta]) => {
-      const p = room.players.find(x => x.id === pid);
-      const name = p ? p.name : '?';
-      const sign = delta < 0 ? '' : '+';
-      return `<div class="result-row"><span>${escapeHtml(name)}</span><span class="${delta < 0 ? 'good' : 'bad'}">${sign}${delta}</span></div>`;
-    }).join('');
-  }
-
-  function renderMelds() {
-    const host = $('#tableMelds');
-    host.innerHTML = '';
-    if (!game.melds || game.melds.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'melds-empty';
-      empty.textContent = 'Masada henüz açılmış per/çift yok.';
-      host.appendChild(empty);
-      return;
-    }
-    game.melds.forEach(meld => {
-      const wrap = document.createElement('div');
-      wrap.className = 'meld-group';
-      wrap.addEventListener('click', () => onMeldClick(meld.id));
-      const label = document.createElement('div');
-      label.className = 'meld-label';
-      label.textContent = meld.kind === 'run' ? 'Per' : 'Çift';
-      wrap.appendChild(label);
-      const tilesWrap = document.createElement('div');
-      tilesWrap.className = 'meld-tiles';
-      meld.tiles.forEach(t => tilesWrap.appendChild(tileEl(t, { small: true })));
-      wrap.appendChild(tilesWrap);
-      host.appendChild(wrap);
-    });
   }
 
   function renderRackAnimated() {
@@ -412,7 +342,7 @@
 
     for (let s = 0; s < 4; s++) {
       if (s === mySeatIdx) continue;
-      const rel = (s - mySeatIdx + 4) % 4;
+      const rel = (s - mySeatIdx + 4) % 4; // 1=right,2=top,3=left
       const zone = zones[rel];
       if (!zone) continue;
       const occupantId = room.seats[s];
@@ -427,12 +357,6 @@
         tag.className = 'bot-tag';
         tag.textContent = '🤖';
         nameEl.appendChild(tag);
-      }
-      if (occupant && game.openedBy && game.openedBy[occupant.id]) {
-        const openTag = document.createElement('span');
-        openTag.className = 'open-tag';
-        openTag.textContent = '✅';
-        nameEl.appendChild(openTag);
       }
       const tilesEl = document.createElement('div');
       tilesEl.className = 'mini-tiles';
@@ -484,7 +408,11 @@
   $('#voiceToggleGame').addEventListener('click', toggleVoice);
 
   async function toggleVoice() {
-    if (voiceOn) stopVoice(); else await startVoice();
+    if (voiceOn) {
+      stopVoice();
+    } else {
+      await startVoice();
+    }
   }
 
   async function startVoice() {
@@ -558,9 +486,18 @@
     return pc;
   }
 
-  socket.on('voicePeers', () => {});
-  socket.on('voicePeerJoined', peerId => { if (voiceOn) ensurePeer(peerId, true); });
-  socket.on('voicePeerLeft', peerId => closePeer(peerId));
+  socket.on('voicePeers', () => {
+    // Sesli sohbet açılınca voiceJoin/voicePeerJoined akışı devreye giriyor.
+  });
+
+  socket.on('voicePeerJoined', peerId => {
+    if (!voiceOn) return;
+    ensurePeer(peerId, true);
+  });
+
+  socket.on('voicePeerLeft', peerId => {
+    closePeer(peerId);
+  });
 
   socket.on('voiceSignal', async ({ from, signal }) => {
     if (!voiceOn) return;
@@ -581,16 +518,22 @@
   // Tam ekran / kaydırma engelleme yardımcıları
   // ============================================================
   document.addEventListener('touchmove', e => {
+    // Kaydırılabilir alanların (rack, chat, seating) kendi iç kaydırmasına izin ver,
+    // sayfanın kendisinin (body) kaymasını/zoom'unu engelle.
     if (e.touches.length > 1) { e.preventDefault(); return; }
   }, { passive: false });
 
   document.addEventListener('gesturestart', e => e.preventDefault());
 
+  // ============================================================
+  // utils
+  // ============================================================
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
     return div.innerHTML;
   }
 
+  // Sayfa yenilendiğinde klasik masa durumu yeniden başlatılır.
   showView('lobby');
 })();
