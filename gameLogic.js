@@ -111,32 +111,21 @@ function checkPairsWin(normals, wildCount) {
     pairs += Math.floor(c / 2);
     leftovers += c % 2;
   }
-  // Eksik çiftler wild ile tamamlanabilir; leftover tekli taşlar da wild ile eşlenebilir.
-  const neededWildForPairs = leftovers; // her tekli taşı eşlemek için 1 wild
+  const neededWildForPairs = leftovers;
   const usedWild = neededWildForPairs;
   const remainingWild = wildCount - usedWild;
-  const totalPairs = pairs + Math.floor(neededWildForPairs / 1) * 0; // pairs already counted properly below
-  // Basitleştirilmiş: tekli taşları wild ile çift yap, sonra toplam çift sayısı >=7 ve artan tam olarak 1 wild olmalı (çift okey)
   if (remainingWild < 0) return false;
-  const finalPairs = pairs + leftovers; // her leftover artık wild ile çift oldu (varsayım)
+  const finalPairs = pairs + leftovers;
   return finalPairs === 7 && remainingWild === 1;
 }
 
 /** normals: {color,number}[]  wildCount: kaç tane joker kullanılabilir. Tümü 3/4'lük gruplara ayrılabiliyor mu? */
 function canPartition(normals, wildCount) {
-  if (normals.length === 0) return wildCount % 3 === 0 || wildCount === 0 && true; // saf jokerlerden grup (nadir) — basit kabul
+  if (normals.length === 0) return wildCount % 3 === 0 || wildCount === 0 && true;
   const sorted = normals.slice().sort((a, b) => (a.color === b.color ? a.number - b.number : a.color.localeCompare(b.color)));
 
-  function removeFirst(arr) {
-    const copy = arr.slice();
-    copy.shift();
-    return copy;
-  }
-
   function tryRun(arr, wilds, length) {
-    // arr sorted; taşı arr[0] ile başlayan, length uzunlukta aynı renk ardışık seri dener
     const first = arr[0];
-    let used = [first];
     let rest = arr.slice(1);
     let need = length - 1;
     let cursor = first.number;
@@ -146,7 +135,6 @@ function canPartition(normals, wildCount) {
       if (cursor > 13) return null;
       const idx = rest.findIndex(t => t.color === first.color && t.number === cursor);
       if (idx !== -1) {
-        used.push(rest[idx]);
         rest = rest.slice(0, idx).concat(rest.slice(idx + 1));
       } else if (w > 0) {
         w -= 1;
