@@ -2,8 +2,12 @@
 <html lang="tr">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-<title>Okey Masası — Arkadaşlarla Online Okey</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="theme-color" content="#0a3a2a" />
+<title>Okey Masası — Arkadaşlarla & Botlara Karşı Online Okey</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css" />
@@ -12,27 +16,49 @@
 
 <div id="toast" class="toast" hidden></div>
 
+<!-- ===================== 4 KÖŞE REKLAM ALANLARI ===================== -->
+<div class="ad-corner ad-tl" aria-hidden="true"><span>Reklam</span></div>
+<div class="ad-corner ad-tr" aria-hidden="true"><span>Reklam</span></div>
+<div class="ad-corner ad-bl" aria-hidden="true"><span>Reklam</span></div>
+<div class="ad-corner ad-br" aria-hidden="true"><span>Reklam</span></div>
+
+<!-- ===================== ONLINE BADGE (her ekranda görünür) ===================== -->
+<div class="online-badge"><span class="dot"></span><span id="onlineCount">0</span> çevrimiçi</div>
+
 <!-- ===================== LOBBY ===================== -->
 <section id="view-lobby" class="view view-lobby">
   <div class="lobby-card">
     <h1 class="logo">Okey<span class="logo-accent">Masası</span></h1>
-    <p class="tagline">Gösterge açılsın, kupa karışsın. Arkadaşlarınla aynı masaya otur.</p>
+    <p class="tagline">Gösterge açılsın, kupa karışsın. Arkadaşlarınla ya da botlara karşı oyna.</p>
 
-    <label class="field">
-      <span>Adın</span>
-      <input id="nameInput" maxlength="20" placeholder="örn. Ayşe" autocomplete="off" />
-    </label>
+    <button id="quickPlayBtn" class="btn btn-quick">⚡ Hızlı Oyun <small>(Botlara Karşı)</small></button>
 
-    <div class="lobby-actions">
-      <button id="createRoomBtn" class="btn btn-primary">Yeni Oda Aç</button>
+    <div class="divider"><span>ya da arkadaşlarınla oyna</span></div>
 
-      <div class="divider"><span>ya da</span></div>
+    <div class="auth-tabs">
+      <button class="tab-btn active" data-tab="create" type="button">Oda Kur</button>
+      <button class="tab-btn" data-tab="join" type="button">Odaya Katıl</button>
+    </div>
 
-      <label class="field">
-        <span>Oda Kodu</span>
-        <input id="codeInput" maxlength="5" placeholder="ör. K7X2M" autocomplete="off" style="text-transform:uppercase" />
-      </label>
-      <button id="joinRoomBtn" class="btn btn-secondary">Odaya Katıl</button>
+    <div class="auth-panels">
+      <div class="auth-panel active" id="panel-create">
+        <label class="field">
+          <span>Adın</span>
+          <input id="nameInputCreate" maxlength="20" placeholder="örn. Ayşe" autocomplete="off" />
+        </label>
+        <button id="createRoomBtn" class="btn btn-primary">Yeni Oda Aç</button>
+      </div>
+      <div class="auth-panel" id="panel-join">
+        <label class="field">
+          <span>Adın</span>
+          <input id="nameInputJoin" maxlength="20" placeholder="örn. Ayşe" autocomplete="off" />
+        </label>
+        <label class="field">
+          <span>Oda Kodu</span>
+          <input id="codeInput" maxlength="5" placeholder="ör. K7X2M" autocomplete="off" style="text-transform:uppercase" />
+        </label>
+        <button id="joinRoomBtn" class="btn btn-secondary">Odaya Katıl</button>
+      </div>
     </div>
 
     <p class="hint">Oda kodunu arkadaşlarına gönder, aynı kodla katılsınlar.</p>
@@ -45,15 +71,14 @@
     <div class="room-code-badge">Oda Kodu: <strong id="roomCodeLabel">-----</strong> <button id="copyCodeBtn" class="mini-btn" title="Kodu kopyala">⧉</button></div>
     <button id="voiceToggleWaiting" class="mini-btn voice-btn">🎤 Sesi Aç</button>
     <button id="chatToggleBtn" class="mini-btn">💬 Sohbet</button>
+    <button id="leaveWaitingBtn" class="mini-btn" title="Ana menüye dön">🏠</button>
   </header>
 
   <div class="seating-area">
     <h2>Yerini Seç</h2>
     <p class="hint">4 oyuncu masaya oturur, kalanlar izleyici olarak sesli sohbete katılabilir. (Maksimum 8 kişi)</p>
 
-    <div class="seat-grid" id="seatGrid">
-      <!-- 4 seat butonu JS ile doldurulur -->
-    </div>
+    <div class="seat-grid" id="seatGrid"></div>
 
     <button id="spectatorBtn" class="btn btn-ghost">İzleyici Ol</button>
 
@@ -72,6 +97,7 @@
     <div class="header-actions">
       <button id="voiceToggleGame" class="mini-btn voice-btn">🎤 Sesi Aç</button>
       <button id="chatToggleBtn2" class="mini-btn">💬 Sohbet</button>
+      <button id="leaveGameBtn" class="mini-btn" title="Ana menüye dön">🏠</button>
     </div>
   </header>
 
@@ -94,7 +120,6 @@
         </button>
       </div>
 
-      <!-- Diğer oyuncuların koltukları (üst / sol / sağ) -->
       <div class="seat-remote seat-top" id="seatTop"></div>
       <div class="seat-remote seat-left" id="seatLeft"></div>
       <div class="seat-remote seat-right" id="seatRight"></div>
@@ -108,9 +133,7 @@
       <button id="newHandBtn" class="btn btn-small btn-ghost" hidden>Yeni El</button>
     </div>
 
-    <div class="my-rack" id="myRack">
-      <!-- kendi taşların JS ile buraya render edilir -->
-    </div>
+    <div class="my-rack" id="myRack"></div>
   </div>
 </section>
 
