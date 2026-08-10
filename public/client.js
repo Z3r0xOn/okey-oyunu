@@ -10,8 +10,9 @@
   let localStream = null;
   const peerConnections = {}; // peerId -> RTCPeerConnection
   const audioEls = {};        // peerId -> <audio>
-
-  const COLOR_SYMBOL = { kirmizi: '●', sari: '●', mavi: '●', siyah: '●' };
+  let prevHandIds = [];
+  let prevDiscardTopId = null;
+  let indicatorRevealed = false;
 
   const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -35,16 +36,47 @@
     showToast._t = setTimeout(() => { toast.hidden = true; }, 3200);
   }
 
+  function resetToLobby() {
+    room = null;
+    game = null;
+    selectedTileId = null;
+    prevHandIds = [];
+    prevDiscardTopId = null;
+    indicatorRevealed = false;
+    stopVoice();
+    chatMessages.innerHTML = '';
+    showView('lobby');
+  }
+
   // ============================================================
   // LOBBY
   // ============================================================
+  function getEnteredName() {
+    const a = $('#nameInputCreate')?.value.trim();
+    const b = $('#nameInputJoin')?.value.trim();
+    return a || b || 'Oyuncu';
+  }
+
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.auth-panel').forEach(p => p.classList.remove('active'));
+      $('#panel-' + btn.dataset.tab).classList.add('active');
+    });
+  });
+
+  $('#quickPlayBtn').addEventListener('click', () => {
+    socket.emit('quickPlay', { name: getEnteredName() });
+  });
+
   $('#createRoomBtn').addEventListener('click', () => {
-    const name = $('#nameInput').value.trim() || 'Oyuncu';
+    const name = $('#nameInputCreate').value.trim() || 'Oyuncu';
     socket.emit('createRoom', { name });
   });
 
   $('#joinRoomBtn').addEventListener('click', () => {
-    const name = $('#nameInput').value.trim() || 'Oyuncu';
+    const name = $('#nameInputJoin').value.trim() || 'Oyuncu';
     const code = $('#codeInput').value.trim().toUpperCase();
     if (!code) { showToast('Lütfen oda kodunu gir.'); return; }
     socket.emit('joinRoom', { code, name });
@@ -52,17 +84,21 @@
 
   socket.on('connect', () => { myId = socket.id; });
   socket.on('errorMsg', msg => showToast(msg));
+  socket.on('onlineCount', n => { $('#onlineCount').textContent = n; });
 
-  socket.on('joinedRoom', ({ code }) => {
+  socket.on('joinedRoom', ({ code, quick }) => {
     $('#roomCodeLabel').textContent = code;
     $('#roomCodeLabel2').textContent = code;
-    showView('waiting');
+    if (!quick) showView('waiting');
   });
 
   $('#copyCodeBtn').addEventListener('click', () => {
     const code = $('#roomCodeLabel').textContent;
     navigator.clipboard?.writeText(code).then(() => showToast('Oda kodu kopyalandı: ' + code));
   });
+
+  $('#leaveWaitingBtn').addEventListener('click', () => location.reload());
+  $('#leaveGameBtn').addEventListener('click', () => location.reload());
 
   // ============================================================
   // WAITING / SEATING
@@ -138,7 +174,7 @@
     return String(tile.number);
   }
 
-  function tileEl(tile, { clickable = false, small = false, faceDown = false } = {}) {
+  function tileEl(tile, { clickable = false, faceDown = false } = {}) {
     const el = document.createElement('div');
     el.className = 'tile';
     if (faceDown) { el.classList.add('tile-back'); return el; }
@@ -165,7 +201,6 @@
       return;
     }
     if (selectedTileId === tile.id) {
-      // ikinci tık: taşı at
       socket.emit('discardTile', tile.id);
       selectedTileId = null;
     } else {
@@ -174,25 +209,51 @@
     }
   }
 
-  $('#deckPile').addEventListener('click', () => socket.emit('drawTile', 'deck'));
-  $('#discardPile').addEventListener('click', () => socket.emit('drawTile', 'discard'));
+  $('#deckPile').addEventListener('click', () => { pulse($('#deckPile')); socket.emit('drawTile', 'deck'); });
+  $('#discardPile').addEventListener('click', () => { pulse($('#discardPile')); socket.emit('drawTile', 'discard'); });
   $('#declareWinBtn').addEventListener('click', () => socket.emit('declareWin'));
   $('#manualWinBtn').addEventListener('click', () => socket.emit('claimManualWin'));
+
+  function pulse(el) {
+    el.style.transform = 'scale(0.9)';
+    setTimeout(() => { el.style.transform = ''; }, 140);
+  }
 
   function renderGame() {
     if (!game || !room) return;
     const seat = mySeat();
 
-    $('#indicatorTile').replaceWith(buildIndicator());
+    // Gösterge — ilk gösterimde açılış animasyonu
+    const indicatorHost = $('#indicatorTile');
+    indicatorHost.className = 'tile';
+    if (game.indicator.joker) indicatorHost.classList.add('is-joker');
+    else indicatorHost.classList.add('color-' + game.indicator.color);
+    indicatorHost.textContent = tileLabel(game.indicator);
+    if (!indicatorRevealed) {
+      indicatorHost.classList.add('indicator-reveal');
+      indicatorRevealed = true;
+    }
     $('#okeySpecLabel').textContent = game.okeySpec
       ? `${colorNameTr(game.okeySpec.color)} ${game.okeySpec.number}`
       : '-';
 
     $('#deckCount').textContent = game.deckCount;
-    const discardWrap = $('#discardTopTile');
-    discardWrap.replaceWith(tileEl(game.discardTop, {}));
-    // re-select after replace (id lost) — fix by re-querying
-    document.querySelector('.discard-pile .tile').id = 'discardTopTile';
+
+    // Orta yığın — değiştiyse pop animasyonu
+    const discardHost = $('#discardTopTile');
+    discardHost.className = 'tile';
+    if (game.discardTop) {
+      if (game.discardTop.joker) discardHost.classList.add('is-joker');
+      else discardHost.classList.add('color-' + game.discardTop.color);
+      discardHost.textContent = tileLabel(game.discardTop);
+      if (game.discardTop.id !== prevDiscardTopId) {
+        discardHost.classList.add('tile-pop');
+      }
+      prevDiscardTopId = game.discardTop.id;
+    } else {
+      discardHost.classList.add('tile-empty');
+      prevDiscardTopId = null;
+    }
 
     const turnPlayer = room.players.find(p => p.seat === game.turnIndex);
     $('#turnBanner').textContent = game.finished
@@ -201,19 +262,50 @@
 
     $('#newHandBtn').hidden = !(game.finished && room.hostId === myId);
 
-    // rack (kendi elim)
-    const rack = $('#myRack');
-    rack.innerHTML = '';
-    const hand = (game.myHand || []).slice().sort(sortTiles);
-    hand.forEach(t => rack.appendChild(tileEl(t, { clickable: true })));
-
+    renderRackAnimated();
     renderRemoteSeats(seat);
   }
 
-  function buildIndicator() {
-    const el = tileEl(game.indicator, {});
-    el.id = 'indicatorTile';
-    return el;
+  function renderRackAnimated() {
+    const rack = $('#myRack');
+    const prevRects = {};
+    rack.querySelectorAll('.tile[data-tid]').forEach(el => {
+      prevRects[el.dataset.tid] = el.getBoundingClientRect();
+    });
+
+    rack.innerHTML = '';
+    const hand = (game.myHand || []).slice().sort(sortTiles);
+    const newIds = hand.map(t => t.id);
+
+    hand.forEach(t => {
+      const el = tileEl(t, { clickable: true });
+      el.dataset.tid = t.id;
+      rack.appendChild(el);
+    });
+
+    requestAnimationFrame(() => {
+      rack.querySelectorAll('.tile[data-tid]').forEach(el => {
+        const id = el.dataset.tid;
+        const old = prevRects[id];
+        if (old) {
+          const newRect = el.getBoundingClientRect();
+          const dx = old.left - newRect.left;
+          const dy = old.top - newRect.top;
+          if (dx || dy) {
+            el.style.transition = 'none';
+            el.style.transform = `translate(${dx}px, ${dy}px)`;
+            requestAnimationFrame(() => {
+              el.style.transition = 'transform 0.22s ease';
+              el.style.transform = '';
+            });
+          }
+        } else if (!prevHandIds.includes(id)) {
+          el.classList.add('tile-enter');
+          setTimeout(() => el.classList.remove('tile-enter'), 330);
+        }
+      });
+      prevHandIds = newIds;
+    });
   }
 
   function sortTiles(a, b) {
@@ -250,6 +342,12 @@
       const nameEl = document.createElement('div');
       nameEl.className = 'rname';
       nameEl.textContent = occupant ? occupant.name : 'Boş koltuk';
+      if (occupant && occupant.bot) {
+        const tag = document.createElement('span');
+        tag.className = 'bot-tag';
+        tag.textContent = '🤖';
+        nameEl.appendChild(tag);
+      }
       const tilesEl = document.createElement('div');
       tilesEl.className = 'mini-tiles';
       const count = occupantId ? (game.otherCounts?.[occupantId] || 0) : 0;
@@ -353,6 +451,7 @@
   }
 
   function stopVoice() {
+    if (!voiceOn && !localStream) return;
     voiceOn = false;
     setVoiceButtonsState(false);
     socket.emit('voiceLeave');
@@ -410,9 +509,8 @@
     return pc;
   }
 
-  socket.on('voicePeers', peerIds => {
-    // Yeni katılan kişi için gelecekte sesi açarsa bu liste kullanılacak; şimdilik saklamaya gerek yok,
-    // sesli sohbet açılınca voiceJoin/voicePeerJoined akışı devreye giriyor.
+  socket.on('voicePeers', () => {
+    // Sesli sohbet açılınca voiceJoin/voicePeerJoined akışı devreye giriyor.
   });
 
   socket.on('voicePeerJoined', peerId => {
@@ -425,7 +523,7 @@
   });
 
   socket.on('voiceSignal', async ({ from, signal }) => {
-    if (!voiceOn) return; // sesim kapalıysa sinyalleri yoksay
+    if (!voiceOn) return;
     const pc = ensurePeer(from, false);
     if (signal.type === 'offer') {
       await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
@@ -440,6 +538,17 @@
   });
 
   // ============================================================
+  // Tam ekran / kaydırma engelleme yardımcıları
+  // ============================================================
+  document.addEventListener('touchmove', e => {
+    // Kaydırılabilir alanların (rack, chat, seating) kendi iç kaydırmasına izin ver,
+    // sayfanın kendisinin (body) kaymasını/zoom'unu engelle.
+    if (e.touches.length > 1) { e.preventDefault(); return; }
+  }, { passive: false });
+
+  document.addEventListener('gesturestart', e => e.preventDefault());
+
+  // ============================================================
   // utils
   // ============================================================
   function escapeHtml(str) {
@@ -447,4 +556,7 @@
     div.textContent = str;
     return div.innerHTML;
   }
+
+  // Sayfa her yenilendiğinde ana menüye düşer (state saklanmaz) — bu zaten varsayılan davranış.
+  showView('lobby');
 })();
