@@ -2,7 +2,7 @@ const path = require('path');
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
-const { startNewHand, isOkeyTile, validateWinningHand } = require('./gameLogic');
+const { startNewHand, validateWinningHand } = require('./gameLogic');
 
 const app = express();
 const server = http.createServer(app);
@@ -12,13 +12,15 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 /**
  * rooms[code] = {
- *   code, hostId,
- *   players: { [socketId]: { id, name, seat: 0-3|null, spectator: bool } }, // max 8 total
- *   seats: [socketId|null, socketId|null, socketId|null, socketId|null],
- *   game: null | gameState (see gameLogic.startNewHand)
+ *   code, hostId, quick: bool,
+ *   players: { [id]: { id, name, seat: 0-3|null, spectator: bool, bot?: bool } },
+ *   seats: [id|null, id|null, id|null, id|null],
+ *   game: null | gameState
  * }
  */
 const rooms = {};
+
+const BOT_NAMES = ['Ahmet Bot', 'Zeynep Bot', 'Mehmet Bot', 'Elif Bot', 'Can Bot', 'Deniz Bot', 'Ayşe Bot', 'Barış Bot'];
 
 function genRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -29,18 +31,28 @@ function genRoomCode() {
   return code;
 }
 
+function shuffleArr(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 function publicRoomState(room) {
   return {
     code: room.code,
     hostId: room.hostId,
-    players: Object.values(room.players).map(p => ({ id: p.id, name: p.name, seat: p.seat, spectator: p.spectator })),
+    quick: !!room.quick,
+    players: Object.values(room.players).map(p => ({ id: p.id, name: p.name, seat: p.seat, spectator: p.spectator, bot: !!p.bot })),
     seats: room.seats,
     gameActive: !!room.game && !room.game.finished
   };
 }
 
 /** Oyuncuya özel görünüm: kendi eli açık, diğerlerinin sadece taş sayısı görünür. */
-function personalGameView(room, socketId) {
+function personalGameView(room, id) {
   const g = room.game;
   if (!g) return null;
   const seatOfPlayer = {};
@@ -62,7 +74,7 @@ function personalGameView(room, socketId) {
     phase: g.phase,
     finished: g.finished,
     winnerId: g.winnerId,
-    myHand: g.hands[socketId] || [],
+    myHand: g.hands[id] || [],
     otherCounts,
     seatOfPlayer
   };
@@ -78,16 +90,77 @@ function broadcastGame(room) {
   }
 }
 
-function seatedPlayerIds(room) {
-  return room.seats.filter(Boolean);
+function broadcastOnlineCount() {
+  io.emit('onlineCount', io.engine.clientsCount);
+}
+
+// ---------- shared draw / discard (used by both real players and bots) ----------
+function doDraw(room, pid, source) {
+  const g = room.game;
+  if (!g || g.finished) return false;
+  let actualSource = source;
+  if (actualSource === 'discard' && g.discardPile.length === 0) actualSource = 'deck';
+  let tile;
+  if (actualSource === 'discard') {
+    tile = g.discardPile.pop();
+  } else {
+    if (g.deck.length === 0) return false;
+    tile = g.deck.pop();
+  }
+  g.hands[pid].push(tile);
+  g.phase = 'discard';
+  broadcastGame(room);
+  return true;
+}
+
+function doDiscard(room, pid, tileId) {
+  const g = room.game;
+  if (!g || g.finished) return false;
+  const hand = g.hands[pid];
+  if (!hand || !hand.length) return false;
+  let idx = tileId ? hand.findIndex(t => t.id === tileId) : Math.floor(Math.random() * hand.length);
+  if (idx === -1) idx = Math.floor(Math.random() * hand.length);
+  const [tile] = hand.splice(idx, 1);
+  g.discardPile.push(tile);
+  g.turnIndex = (g.turnIndex + 1) % 4;
+  g.phase = 'draw';
+  broadcastGame(room);
+  scheduleBotIfNeeded(room);
+  return true;
+}
+
+// ---------- bot AI: fully random legal moves ----------
+function scheduleBotIfNeeded(room) {
+  if (!room.game || room.game.finished) return;
+  const g = room.game;
+  const turnSeatIdx = g.turnIndex;
+  const pid = room.seats[turnSeatIdx];
+  const player = room.players[pid];
+  if (!player || !player.bot) return;
+
+  const delay = 550 + Math.random() * 900;
+  setTimeout(() => {
+    if (!rooms[room.code] || !room.game || room.game.finished) return;
+    if (room.game.turnIndex !== turnSeatIdx) return; // stale timer, turn already moved on
+    if (room.game.phase === 'draw') {
+      const useDiscard = Math.random() < 0.12 && room.game.discardPile.length > 0;
+      doDraw(room, pid, useDiscard ? 'discard' : 'deck');
+      scheduleBotIfNeeded(room); // now in discard phase, chain the next step
+    } else if (room.game.phase === 'discard') {
+      doDiscard(room, pid, null); // null => bot discards a random tile
+    }
+  }, delay);
 }
 
 io.on('connection', socket => {
+  broadcastOnlineCount();
+
   socket.on('createRoom', ({ name }) => {
     const code = genRoomCode();
     rooms[code] = {
       code,
       hostId: socket.id,
+      quick: false,
       players: {},
       seats: [null, null, null, null],
       game: null
@@ -101,11 +174,42 @@ io.on('connection', socket => {
       socket.emit('errorMsg', 'Bu kodla bir oda bulunamadı.');
       return;
     }
-    if (Object.keys(room.players).length >= 8) {
+    if (Object.keys(room.players).filter(id => !room.players[id].bot).length >= 8) {
       socket.emit('errorMsg', 'Oda dolu (en fazla 8 kişi).');
       return;
     }
     joinRoomInternal(socket, room.code, name);
+  });
+
+  socket.on('quickPlay', ({ name }) => {
+    const code = genRoomCode();
+    const room = {
+      code,
+      hostId: socket.id,
+      quick: true,
+      players: {},
+      seats: [null, null, null, null],
+      game: null
+    };
+    rooms[code] = room;
+    socket.join(code);
+    socket.data.roomCode = code;
+
+    room.players[socket.id] = { id: socket.id, name: (name || 'Oyuncu').slice(0, 20), seat: 0, spectator: false };
+    room.seats[0] = socket.id;
+
+    const botNames = shuffleArr(BOT_NAMES).slice(0, 3);
+    for (let i = 1; i < 4; i++) {
+      const botId = 'bot-' + Math.random().toString(36).slice(2, 9);
+      room.players[botId] = { id: botId, name: botNames[i - 1], seat: i, spectator: false, bot: true };
+      room.seats[i] = botId;
+    }
+
+    socket.emit('joinedRoom', { code, quick: true });
+    room.game = startNewHand(room.seats);
+    broadcastRoom(room);
+    broadcastGame(room);
+    scheduleBotIfNeeded(room);
   });
 
   function joinRoomInternal(socket, code, name) {
@@ -118,10 +222,9 @@ io.on('connection', socket => {
       seat: null,
       spectator: true
     };
-    socket.emit('joinedRoom', { code });
+    socket.emit('joinedRoom', { code, quick: false });
     broadcastRoom(room);
-    // Odaya yeni katılana mevcut sesli sohbet katılımcılarını bildir (WebRTC mesh kurulumu için)
-    const others = Object.keys(room.players).filter(id => id !== socket.id);
+    const others = Object.keys(room.players).filter(id => id !== socket.id && !room.players[id].bot);
     socket.emit('voicePeers', others);
   }
 
@@ -129,7 +232,6 @@ io.on('connection', socket => {
     const room = rooms[socket.data.roomCode];
     if (!room) return;
     if (seatIndex === null) {
-      // Seyirciye geç
       const curSeat = room.players[socket.id].seat;
       if (curSeat !== null) room.seats[curSeat] = null;
       room.players[socket.id].seat = null;
@@ -165,6 +267,7 @@ io.on('connection', socket => {
     room.game = startNewHand(seats);
     broadcastRoom(room);
     broadcastGame(room);
+    scheduleBotIfNeeded(room);
   });
 
   socket.on('drawTile', source => {
@@ -177,20 +280,12 @@ io.on('connection', socket => {
       socket.emit('errorMsg', 'Sıra sende değil.');
       return;
     }
-    let tile;
-    if (source === 'discard') {
-      if (g.discardPile.length === 0) return;
-      tile = g.discardPile.pop();
-    } else {
-      if (g.deck.length === 0) {
-        socket.emit('errorMsg', 'Kupada taş kalmadı.');
-        return;
-      }
-      tile = g.deck.pop();
+    if (source === 'discard' && g.discardPile.length === 0) return;
+    if (source === 'deck' && g.deck.length === 0) {
+      socket.emit('errorMsg', 'Kupada taş kalmadı.');
+      return;
     }
-    g.hands[socket.id].push(tile);
-    g.phase = 'discard';
-    broadcastGame(room);
+    doDraw(room, socket.id, source);
   });
 
   socket.on('discardTile', tileId => {
@@ -204,13 +299,8 @@ io.on('connection', socket => {
       return;
     }
     const hand = g.hands[socket.id];
-    const idx = hand.findIndex(t => t.id === tileId);
-    if (idx === -1) return;
-    const [tile] = hand.splice(idx, 1);
-    g.discardPile.push(tile);
-    g.turnIndex = (g.turnIndex + 1) % 4;
-    g.phase = 'draw';
-    broadcastGame(room);
+    if (!hand.some(t => t.id === tileId)) return;
+    doDiscard(room, socket.id, tileId);
   });
 
   socket.on('declareWin', () => {
@@ -236,8 +326,6 @@ io.on('connection', socket => {
   });
 
   socket.on('claimManualWin', () => {
-    // Otomatik kontrolün yakalayamayabileceği geçerli el varyasyonları için:
-    // oyuncu elini masaya açar, diğer oyuncular kabul/red oyu verir.
     const room = rooms[socket.data.roomCode];
     if (!room || !room.game || room.game.finished) return;
     const g = room.game;
@@ -252,7 +340,7 @@ io.on('connection', socket => {
   socket.on('resolveManualWin', ({ claimantId, accepted }) => {
     const room = rooms[socket.data.roomCode];
     if (!room || !room.game || room.game.finished) return;
-    if (room.hostId !== socket.id) return; // sadece host hakemlik yapar (basit çözüm)
+    if (room.hostId !== socket.id) return;
     if (accepted) {
       room.game.finished = true;
       room.game.winnerId = claimantId;
@@ -271,6 +359,7 @@ io.on('connection', socket => {
     room.game = startNewHand(room.seats);
     broadcastRoom(room);
     broadcastGame(room);
+    scheduleBotIfNeeded(room);
   });
 
   socket.on('chatMsg', text => {
@@ -296,6 +385,7 @@ io.on('connection', socket => {
   });
 
   socket.on('disconnect', () => {
+    broadcastOnlineCount();
     const code = socket.data.roomCode;
     const room = rooms[code];
     if (!room) return;
@@ -303,12 +393,14 @@ io.on('connection', socket => {
     if (seat !== null && seat !== undefined) room.seats[seat] = null;
     delete room.players[socket.id];
     socket.to(code).emit('voicePeerLeft', socket.id);
-    if (Object.keys(room.players).length === 0) {
+
+    const remainingHumans = Object.values(room.players).filter(p => !p.bot);
+    if (remainingHumans.length === 0) {
       delete rooms[code];
       return;
     }
     if (room.hostId === socket.id) {
-      room.hostId = Object.keys(room.players)[0];
+      room.hostId = remainingHumans[0].id;
     }
     broadcastRoom(room);
     if (room.game) broadcastGame(room);
@@ -317,5 +409,3 @@ io.on('connection', socket => {
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => console.log(`Okey sunucusu ${PORT} portunda çalışıyor`));
-
-
