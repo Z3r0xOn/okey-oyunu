@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#0a3a2a" />
-<title>51 Okey Masası — Arkadaşlarla & Botlara Karşı Online</title>
+<title>Okey Masası — Arkadaşlarla & Botlara Karşı Online Okey</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css" />
@@ -16,18 +16,20 @@
 
 <div id="toast" class="toast" hidden></div>
 
+<!-- ===================== 4 KÖŞE REKLAM ALANLARI ===================== -->
 <div class="ad-corner ad-tl" aria-hidden="true"><span>Reklam</span></div>
 <div class="ad-corner ad-tr" aria-hidden="true"><span>Reklam</span></div>
 <div class="ad-corner ad-bl" aria-hidden="true"><span>Reklam</span></div>
 <div class="ad-corner ad-br" aria-hidden="true"><span>Reklam</span></div>
 
+<!-- ===================== ONLINE BADGE (her ekranda görünür) ===================== -->
 <div class="online-badge"><span class="dot"></span><span id="onlineCount">0</span> çevrimiçi</div>
 
 <!-- ===================== LOBBY ===================== -->
 <section id="view-lobby" class="view view-lobby">
   <div class="lobby-card">
-    <h1 class="logo">51<span class="logo-accent">Okey</span></h1>
-    <p class="tagline">Per ve çift aç, elini işle, ilk boşalan kazanır. Arkadaşlarınla ya da botlara karşı oyna.</p>
+    <h1 class="logo">Okey<span class="logo-accent">Masası</span></h1>
+    <p class="tagline">Kahvedeki düz Okey: 4 kişi, 106 taş, 14 taşla bitiş.</p>
 
     <button id="quickPlayBtn" class="btn btn-quick">⚡ Hızlı Oyun <small>(Botlara Karşı)</small></button>
 
@@ -59,9 +61,7 @@
       </div>
     </div>
 
-    <p class="hint">Oda kodunu arkadaşlarına gönder, aynı kodla katılsınlar.<br>
-    Kurallar: Per açmak için değer toplamı ≥51 (ya da son açılandan büyük). Çift açmak için en az 4 çift.
-    Ortadan çekilen taş o turda kullanılmalı. İşlek taş atmak 51 puan ceza getirir.</p>
+    <p class="hint">Oda kodunu arkadaşlarına gönder, aynı kodla katılsınlar.</p>
   </div>
 </section>
 
@@ -83,7 +83,6 @@
     <button id="spectatorBtn" class="btn btn-ghost">İzleyici Ol</button>
 
     <div class="players-list" id="playersList"></div>
-    <div class="scoreboard" id="scoreboard"></div>
 
     <button id="startGameBtn" class="btn btn-primary" hidden>Oyunu Başlat</button>
     <p id="startHint" class="hint"></p>
@@ -108,36 +107,28 @@
         <div class="indicator-label">Gösterge</div>
         <div id="indicatorTile" class="tile tile-back"></div>
         <div class="okey-label">Okey: <span id="okeySpecLabel">-</span></div>
-        <div class="okey-label" id="openThresholdLabel">-</div>
-        <div class="okey-label" id="amIOpenLabel">-</div>
       </div>
 
       <div class="center-piles">
         <button id="deckPile" class="pile deck-pile" title="Kupadan çek">
           <span id="deckCount">0</span>
-          <small>KUPA</small>
+          <small>DESTE</small>
         </button>
         <button id="discardPile" class="pile discard-pile" title="Ortadan çek">
           <div id="discardTopTile" class="tile tile-empty"></div>
-          <small>ORTA</small>
+          <small>ATILAN</small>
         </button>
       </div>
-
-      <div class="table-melds" id="tableMelds"></div>
-
-      <div id="handResult" class="hand-result" hidden></div>
 
       <div class="seat-remote seat-top" id="seatTop"></div>
       <div class="seat-remote seat-left" id="seatLeft"></div>
       <div class="seat-remote seat-right" id="seatRight"></div>
     </div>
 
-    <p id="mustUseHint" class="must-use-hint" hidden>⚠️ Ortadan çektiğin taşı bu turda bir açma/işleme hamlesinde kullanmalısın.</p>
-
     <div class="action-bar">
-      <button id="openRunBtn" class="btn btn-small btn-gold">Per Aç</button>
-      <button id="openPairBtn" class="btn btn-small btn-gold">Çift Aç</button>
-      <button id="discardBtn" class="btn btn-small btn-ghost">Seçili Taşı At</button>
+      <button id="drawDeckBtn" class="btn btn-small">Desteden Çek</button>
+      <button id="drawDiscardBtn" class="btn btn-small">Atılandan Çek</button>
+      <button id="declareWinBtn" class="btn btn-small btn-gold">Bitir</button>
       <button id="newHandBtn" class="btn btn-small btn-ghost" hidden>Yeni El</button>
     </div>
 
