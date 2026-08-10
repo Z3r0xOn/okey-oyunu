@@ -1,7 +1,7 @@
 {
   "name": "okey-oda",
-  "version": "1.0.0",
-  "description": "Arkadaşlarla oynanabilen tarayıcı tabanlı Okey oyunu (oda + sesli sohbet)",
+  "version": "2.0.0",
+  "description": "Klasik Okey - arkadaşlarla veya botlara karşı tarayıcı tabanlı Okey oyunu",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
