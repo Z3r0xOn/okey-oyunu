@@ -1,7 +1,7 @@
 {
-  "name": "okey-oda",
-  "version": "2.0.0",
-  "description": "Klasik Okey - arkadaşlarla veya botlara karşı tarayıcı tabanlı Okey oyunu",
+  "name": "okey51-oda",
+  "version": "1.0.0",
+  "description": "51 Okey - arkadaşlarla veya botlara karşı tarayıcı tabanlı 51 Okey oyunu",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
