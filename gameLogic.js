@@ -1,24 +1,24 @@
-// gameLogic.js — Düz (klasik) Okey kuralları.
-// 106 taş: 4 renk x 1-13 x 2 + 2 sahte okey.
+// gameLogic.js — Okey oyununun kurallarını içeren saf (framework'ten bağımsız) mantık katmanı.
 
-const COLORS = ['kirmizi', 'sari', 'mavi', 'siyah'];
+const COLORS = ['kirmizi', 'sari', 'mavi', 'siyah']; // kırmızı, sarı, mavi, siyah
+
 let uidCounter = 1;
-
 function nextId() {
   return 'T' + (uidCounter++);
 }
 
+/** 106 taşlık desteyi oluşturur: 4 renk x 1-13 x 2 kopya + 2 sahte okey. */
 function createDeck() {
   const deck = [];
   for (const color of COLORS) {
-    for (let number = 1; number <= 13; number++) {
+    for (let n = 1; n <= 13; n++) {
       for (let copy = 0; copy < 2; copy++) {
-        deck.push({ id: nextId(), color, number, joker: false, fake: false });
+        deck.push({ id: nextId(), color, number: n, joker: false });
       }
     }
   }
-  deck.push({ id: nextId(), color: null, number: null, joker: true, fake: true });
-  deck.push({ id: nextId(), color: null, number: null, joker: true, fake: true });
+  deck.push({ id: nextId(), color: null, number: null, joker: true });
+  deck.push({ id: nextId(), color: null, number: null, joker: true });
   return deck;
 }
 
@@ -31,31 +31,19 @@ function shuffle(arr) {
   return a;
 }
 
-/**
- * Klasik düz Okey başlangıcı:
- * 1 oyuncu 15, diğer 3 oyuncu 14 taş alır. 15 taşı alan oyuncu başlar ve taş atar.
- * Gösterge açılır; göstergenin aynı renkte bir üstü okeydir.
- */
+/** Yeni bir el başlatır: deste karılır, gösterge açılır, 4 oyuncuya dağıtılır. */
 function startNewHand(seats) {
-  if (!Array.isArray(seats) || seats.length !== 4 || seats.some(x => !x)) {
-    throw new Error('Düz Okey 4 dolu koltukla başlatılmalıdır.');
-  }
-
+  // seats: 4 elemanlı dizi, dolu koltuklar oyuncu id'si, boşlar null (oyun 4 dolu koltukla başlar)
   let deck = shuffle(createDeck());
-  let indicator = deck.pop();
-  // Gösterge sahte okey gelirse yeniden gösterge açılır; sahte taş tekrar kupaya döner.
-  while (indicator.joker) {
-    deck.push(indicator);
-    deck = shuffle(deck);
-    indicator = deck.pop();
-  }
+  const indicator = deck.pop();
   const okeySpec = indicatorToOkey(indicator);
+
   const hands = {};
   const dealerIndex = Math.floor(Math.random() * 4);
-
   for (let i = 0; i < 4; i++) {
     const playerId = seats[i];
-    hands[playerId] = deck.splice(0, i === dealerIndex ? 15 : 14);
+    const count = i === dealerIndex ? 15 : 14;
+    hands[playerId] = deck.splice(0, count);
   }
 
   return {
@@ -65,155 +53,139 @@ function startNewHand(seats) {
     okeySpec,
     hands,
     dealerIndex,
-    turnIndex: dealerIndex,
-    phase: 'discard', // Başlayan oyuncunun zaten 15 taşı vardır.
+    turnIndex: dealerIndex, // dealer starts by discarding (already has 15)
+    phase: 'discard', // 'draw' | 'discard'
     finished: false,
-    winnerId: null,
-    winningDiscardId: null
+    winnerId: null
   };
 }
 
 function indicatorToOkey(indicator) {
-  // Sahte okeyin kendi numarası yoktur. Klasik masalarda bu durumda yeni gösterge açılır.
-  // Sunucu tarafında startNewHand bu durumu yeniden dağıtımla çözer.
-  if (indicator.joker) return null;
-  return {
-    color: indicator.color,
-    number: indicator.number === 13 ? 1 : indicator.number + 1
-  };
+  if (indicator.joker) {
+    // Gösterge sahte okey gelirse, okey taşı olarak 1-kırmızı kullanılır (yaygın konvansiyon).
+    return { color: 'kirmizi', number: 1 };
+  }
+  const nextNumber = indicator.number === 13 ? 1 : indicator.number + 1;
+  return { color: indicator.color, number: nextNumber };
 }
 
 function isOkeyTile(tile, okeySpec) {
-  if (!tile) return false;
-  if (tile.joker) return true; // Gerçek okey + sahte okey joker görevi görür.
-  return !!okeySpec && tile.color === okeySpec.color && tile.number === okeySpec.number;
+  if (tile.joker) return true;
+  return tile.color === okeySpec.color && tile.number === okeySpec.number;
 }
 
+/**
+ * 15 taşlık bir elin geçerli bir "bitiş" eli olup olmadığını kontrol eder.
+ * Kurallar (basitleştirilmiş): tüm taşlar 3 ya da 4'lük gruplara ayrılabilmeli.
+ * Grup tipleri: aynı renk ardışık sayılar (seri) ya da aynı sayı farklı renkler (set).
+ * Sahte okey ve gösterge-okey taşları joker (her taşın yerine geçebilir) olarak kullanılabilir.
+ */
 function validateWinningHand(hand, okeySpec) {
-  if (!Array.isArray(hand) || hand.length !== 14 || !okeySpec) return false;
+  if (hand.length !== 15) return false;
 
   const normals = [];
   let wildCount = 0;
-  for (const tile of hand) {
-    if (isOkeyTile(tile, okeySpec)) wildCount++;
-    else normals.push({ color: tile.color, number: tile.number });
+  for (const t of hand) {
+    if (isOkeyTile(t, okeySpec)) wildCount++;
+    else normals.push({ color: t.color, number: t.number });
   }
 
-  // Klasik düz Okey'de normal bitiş: 3/4'lük seri veya gruplar.
-  if (canPartition(normals, wildCount)) return true;
+  // Özel durum: 7 çift + 1 okey (çift okey bitişi)
+  if (checkPairsWin(normals, wildCount)) return true;
 
-  // 7 çift de geçerli klasik bitiştir.
-  return checkPairsWin(normals, wildCount);
+  // Genel durum: grup grup ayırma (backtracking)
+  return canPartition(normals, wildCount);
 }
 
 function checkPairsWin(normals, wildCount) {
-  if (normals.length + wildCount !== 14) return false;
-
+  // 7 çift (aynı renk+sayı) + kalan 1 taş okey olmalı.
+  if (normals.length + wildCount !== 15) return false;
   const counts = new Map();
-  for (const tile of normals) {
-    const key = tile.color + '-' + tile.number;
+  for (const t of normals) {
+    const key = t.color + '-' + t.number;
     counts.set(key, (counts.get(key) || 0) + 1);
   }
-
   let pairs = 0;
-  let singles = 0;
-  for (const count of counts.values()) {
-    pairs += Math.floor(count / 2);
-    singles += count % 2;
+  let leftovers = 0;
+  for (const c of counts.values()) {
+    pairs += Math.floor(c / 2);
+    leftovers += c % 2;
   }
-
-  // Her tek taş bir jokerle eşleşebilir. Kalan jokerler ikişerli çift oluşturur.
-  if (singles > wildCount) return false;
-  const remainingWild = wildCount - singles;
-  pairs += singles + Math.floor(remainingWild / 2);
-  return pairs === 7;
+  const neededWildForPairs = leftovers;
+  const usedWild = neededWildForPairs;
+  const remainingWild = wildCount - usedWild;
+  if (remainingWild < 0) return false;
+  const finalPairs = pairs + leftovers;
+  return finalPairs === 7 && remainingWild === 1;
 }
 
+/** normals: {color,number}[]  wildCount: kaç tane joker kullanılabilir. Tümü 3/4'lük gruplara ayrılabiliyor mu? */
 function canPartition(normals, wildCount) {
-  if (normals.length === 0) return wildCount % 3 === 0;
+  if (normals.length === 0) return wildCount % 3 === 0 || wildCount === 0 && true;
+  const sorted = normals.slice().sort((a, b) => (a.color === b.color ? a.number - b.number : a.color.localeCompare(b.color)));
 
-  const sorted = sortTiles(normals);
-  const memo = new Map();
-
-  function keyFor(arr, wilds) {
-    return arr.map(t => `${t.color[0]}${t.number}`).join(',') + '|' + wilds;
+  function tryRun(arr, wilds, length) {
+    const first = arr[0];
+    let rest = arr.slice(1);
+    let need = length - 1;
+    let cursor = first.number;
+    let w = wilds;
+    while (need > 0) {
+      cursor += 1;
+      if (cursor > 13) return null;
+      const idx = rest.findIndex(t => t.color === first.color && t.number === cursor);
+      if (idx !== -1) {
+        rest = rest.slice(0, idx).concat(rest.slice(idx + 1));
+      } else if (w > 0) {
+        w -= 1;
+      } else {
+        return null;
+      }
+      need -= 1;
+    }
+    return { rest, wilds: w };
   }
 
-  function takeIndex(arr, idx) {
-    return arr.slice(0, idx).concat(arr.slice(idx + 1));
+  function trySet(arr, wilds, length) {
+    const first = arr[0];
+    let rest = arr.slice(1).filter(t => t.number === first.number);
+    let others = arr.slice(1).filter(t => t.number !== first.number);
+    const usedColors = new Set([first.color]);
+    let w = wilds;
+    let need = length - 1;
+    let pool = rest.slice();
+    while (need > 0) {
+      const idx = pool.findIndex(t => !usedColors.has(t.color));
+      if (idx !== -1) {
+        usedColors.add(pool[idx].color);
+        pool = pool.slice(0, idx).concat(pool.slice(idx + 1));
+      } else if (w > 0) {
+        w -= 1;
+      } else {
+        return null;
+      }
+      need -= 1;
+    }
+    const remaining = others.concat(pool);
+    return { rest: remaining, wilds: w };
   }
 
   function solve(arr, wilds) {
-    if (arr.length === 0) return wilds % 3 === 0;
-    if (wilds < 0) return false;
-
-    const key = keyFor(arr, wilds);
-    if (memo.has(key)) return memo.get(key);
-
-    const first = arr[0];
-
-    // Seri: aynı renkte ardışık 3 veya 4 taş. 13'ten sonra 1'e sarma yoktur.
-    for (const length of [3, 4]) {
-      let remaining = arr.slice(1);
-      let needWild = 0;
-      let valid = true;
-      for (let n = first.number + 1; n < first.number + length; n++) {
-        const idx = remaining.findIndex(t => t.color === first.color && t.number === n);
-        if (idx >= 0) remaining = takeIndex(remaining, idx);
-        else needWild++;
-      }
-      if (valid && needWild <= wilds && solve(sortTiles(remaining), wilds - needWild)) {
-        memo.set(key, true);
-        return true;
-      }
+    if (arr.length === 0) return true;
+    for (const length of [4, 3]) {
+      const runResult = tryRun(arr, wilds, length);
+      if (runResult && solve(sortArr(runResult.rest), runResult.wilds)) return true;
+      const setResult = trySet(arr, wilds, length);
+      if (setResult && solve(sortArr(setResult.rest), setResult.wilds)) return true;
     }
-
-    // Grup: aynı sayı, farklı renklerden 3 veya 4 taş.
-    for (const length of [3, 4]) {
-      const usedColors = new Set([first.color]);
-      let remaining = arr.slice(1);
-      let needWild = 0;
-
-      while (usedColors.size < length) {
-        const idx = remaining.findIndex(t => t.number === first.number && !usedColors.has(t.color));
-        if (idx >= 0) {
-          usedColors.add(remaining[idx].color);
-          remaining = takeIndex(remaining, idx);
-        } else {
-          needWild++;
-          usedColors.add(`__wild_${needWild}`);
-        }
-      }
-
-      if (needWild <= wilds && solve(sortTiles(remaining), wilds - needWild)) {
-        memo.set(key, true);
-        return true;
-      }
-    }
-
-    memo.set(key, false);
     return false;
   }
 
-  return solve(sorted, wildCount);
-}
-
-function sortTiles(arr) {
-  const order = new Map(COLORS.map((c, i) => [c, i]));
-  return arr.slice().sort((a, b) => {
-    if (a.color === b.color) return a.number - b.number;
-    return (order.get(a.color) ?? 99) - (order.get(b.color) ?? 99);
-  });
-}
-
-/** 15 taşlık elde, atılacak taşı bulup kalan 14 taşın bitip bitmediğini kontrol eder. */
-function findWinningDiscard(hand, okeySpec) {
-  if (!Array.isArray(hand) || hand.length !== 15) return null;
-  for (const tile of hand) {
-    const remaining = hand.filter(t => t.id !== tile.id);
-    if (validateWinningHand(remaining, okeySpec)) return tile;
+  function sortArr(arr) {
+    return arr.slice().sort((a, b) => (a.color === b.color ? a.number - b.number : a.color.localeCompare(b.color)));
   }
-  return null;
+
+  return solve(sorted, wildCount);
 }
 
 module.exports = {
@@ -223,6 +195,5 @@ module.exports = {
   indicatorToOkey,
   isOkeyTile,
   validateWinningHand,
-  findWinningDiscard,
   COLORS
 };
