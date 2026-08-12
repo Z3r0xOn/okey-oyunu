@@ -5,19 +5,26 @@
   let myId = null;
   let room = null;      // publicRoomState
   let game = null;      // personalGameView
-  let selectedTileId = null;
   let voiceOn = false;
   let localStream = null;
   const peerConnections = {}; // peerId -> RTCPeerConnection
   const audioEls = {};        // peerId -> <audio>
-  let prevHandIds = [];
-  let prevDiscardTopId = null;
   let indicatorRevealed = false;
-  let handSlots = new Array(20).fill(null); // ıstakadaki 20 sabit slot: tileId ya da null (boşluk)
-  const SLOTS_PER_ROW = 10;
-  const TOTAL_SLOTS = 20;
-  let dragState = null; // aktif sürükleme durumu
-  const DRAG_THRESHOLD = 6;
+
+  // ---------- rack (klasik 51-okey taşlığı) ----------
+  const RACK_SLOTS = 32; // 16 taş x 2 sıra
+  let localRack = new Array(RACK_SLOTS).fill(null); // slot -> tileId | null
+  let tileMap = {};       // tileId -> tile object (mevcut elden)
+  let selectedSlotIndex = null;
+  let pendingDrawTargetSlot = null;
+
+  // ---------- ses efektleri ----------
+  let soundEnabled = true;
+  let audioCtx = null;
+
+  // ---------- görsel sıra süre çubuğu (bilgilendirme amaçlı, otomatik oynatmaz) ----------
+  let turnTimerInterval = null;
+  let prevTurnKey = null;
 
   const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -204,12 +211,25 @@
     return me ? me.seat : null;
   }
 
+  function nameOf(id) {
+    const p = room.players.find(x => x.id === id);
+    return p ? p.name : '?';
+  }
+
   function tileLabel(tile) {
     if (tile.joker) return '★';
     return String(tile.number);
   }
 
-  function tileEl(tile, { clickable = false, faceDown = false, classic = false, attachClick = true } = {}) {
+  function sortTiles(a, b) {
+    if (a.joker && b.joker) return 0;
+    if (a.joker) return 1;
+    if (b.joker) return -1;
+    if (a.color === b.color) return a.number - b.number;
+    return a.color.localeCompare(b.color);
+  }
+
+  function tileEl(tile, { faceDown = false, classic = false } = {}) {
     const el = document.createElement('div');
     el.className = 'tile';
     if (classic) el.classList.add('tile-classic');
@@ -221,38 +241,308 @@
       el.classList.add('is-okey');
     }
     el.textContent = tileLabel(tile);
-    if (clickable) {
-      el.classList.add('clickable');
-      if (attachClick) el.addEventListener('click', () => onTileClick(tile));
-      if (tile.id === selectedTileId) el.classList.add('selected');
-    }
     return el;
   }
 
-  function onTileClick(tile) {
+  // ---------- ses efektleri ----------
+  function playSound(type) {
+    if (!soundEnabled) return;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      const now = audioCtx.currentTime;
+      if (type === 'tile') {
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(220, now);
+        osc.frequency.exponentialRampToValueAtTime(110, now + 0.05);
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.05);
+        osc.start(now); osc.stop(now + 0.05);
+      } else if (type === 'draw') {
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(350, now);
+        osc.frequency.exponentialRampToValueAtTime(580, now + 0.07);
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.linearRampToValueAtTime(0.01, now + 0.07);
+        osc.start(now); osc.stop(now + 0.07);
+      }
+    } catch (_) { /* ses motoru desteklenmiyor olabilir, sessizce yoksay */ }
+  }
+
+  $('#soundToggleBtn').addEventListener('click', () => {
+    soundEnabled = !soundEnabled;
+    $('#soundToggleBtn').textContent = soundEnabled ? '🔊' : '🔇';
+  });
+
+  // ---------- taşlığı (rack) el ile uzlaştırma ----------
+  /** Sunucudan gelen yeni eli, sürükle-bırakla düzenlenmiş yerel taşlık dizisiyle uzlaştırır. */
+  function reconcileRack(hand) {
+    const handIdSet = new Set(hand.map(t => t.id));
+    tileMap = {};
+    hand.forEach(t => { tileMap[t.id] = t; });
+
+    // Elden çıkan (atılan) taşları yuvalardan temizle
+    for (let i = 0; i < RACK_SLOTS; i++) {
+      if (localRack[i] && !handIdSet.has(localRack[i])) localRack[i] = null;
+    }
+
+    const placedSet = new Set(localRack.filter(Boolean));
+    const newIds = hand.map(t => t.id).filter(id => !placedSet.has(id));
+
+    if (placedSet.size === 0 && newIds.length > 1) {
+      // Yeni el dağıtıldı — sıralı şekilde diz
+      localRack = new Array(RACK_SLOTS).fill(null);
+      hand.slice().sort(sortTiles).forEach((t, i) => { if (i < RACK_SLOTS) localRack[i] = t.id; });
+      pendingDrawTargetSlot = null;
+      return;
+    }
+
+    newIds.forEach(id => {
+      let slot = (pendingDrawTargetSlot !== null && localRack[pendingDrawTargetSlot] === null)
+        ? pendingDrawTargetSlot
+        : localRack.findIndex(s => s === null);
+      pendingDrawTargetSlot = null;
+      if (slot !== -1) localRack[slot] = id;
+    });
+  }
+
+  function clearSlotHighlights() {
+    document.querySelectorAll('.rack-slot.hovered').forEach(s => s.classList.remove('hovered'));
+  }
+
+  function swapSlots(a, b) {
+    const tmp = localRack[a]; localRack[a] = localRack[b]; localRack[b] = tmp;
+  }
+
+  function moveTile(fromIdx, toIdx) {
+    if (fromIdx === toIdx) return;
+    if (localRack[toIdx] === null) { localRack[toIdx] = localRack[fromIdx]; localRack[fromIdx] = null; }
+    else swapSlots(fromIdx, toIdx);
+  }
+
+  function selectSlot(i) {
+    if (!localRack[i]) {
+      if (selectedSlotIndex !== null) {
+        moveTile(selectedSlotIndex, i);
+        selectedSlotIndex = null;
+        renderRack();
+      }
+      return;
+    }
+    playSound('tile');
+    if (selectedSlotIndex === null) selectedSlotIndex = i;
+    else if (selectedSlotIndex === i) selectedSlotIndex = null;
+    else { swapSlots(selectedSlotIndex, i); selectedSlotIndex = null; }
+    renderRack();
+  }
+
+  function discardSlot(i) {
     if (!game || game.finished) return;
     const seat = mySeat();
     if (seat === null || game.turnIndex !== seat || game.phase !== 'discard') {
       showToast('Önce taş çekmen gerekiyor / sıra sende değil.');
       return;
     }
-    if (selectedTileId === tile.id) {
-      socket.emit('discardTile', tile.id);
-      selectedTileId = null;
-    } else {
-      selectedTileId = tile.id;
-      renderGame();
+    const tid = localRack[i];
+    if (!tid) return;
+    localRack[i] = null;
+    selectedSlotIndex = null;
+    playSound('tile');
+    socket.emit('discardTile', tid);
+    renderRack();
+  }
+
+  function sortRackBy(cmp) {
+    const tiles = localRack.filter(Boolean).map(id => tileMap[id]).filter(Boolean).sort(cmp);
+    localRack = new Array(RACK_SLOTS).fill(null);
+    tiles.forEach((t, i) => { if (i < RACK_SLOTS) localRack[i] = t.id; });
+    selectedSlotIndex = null;
+    playSound('tile');
+    renderRack();
+  }
+
+  $('#sortColorBtn').addEventListener('click', () => {
+    sortRackBy((a, b) => (a.joker ? 1 : b.joker ? -1 : (a.color === b.color ? a.number - b.number : a.color.localeCompare(b.color))));
+  });
+  $('#sortNumberBtn').addEventListener('click', () => {
+    sortRackBy((a, b) => (a.joker ? 1 : b.joker ? -1 : (a.number === b.number ? a.color.localeCompare(b.color) : a.number - b.number)));
+  });
+  $('#discardSelectedBtn').addEventListener('click', () => {
+    if (selectedSlotIndex === null) { showToast('Önce taşlıktan bir taş seç.'); return; }
+    discardSlot(selectedSlotIndex);
+  });
+  $('#manualWinBtn').addEventListener('click', () => socket.emit('claimManualWin'));
+  $('#newHandBtn').addEventListener('click', () => socket.emit('newHand'));
+
+  /** İki katlı ahşap taşlığı (32 yuva) sürükle-bırak destekli olarak çizer. */
+  function renderRack() {
+    const row1 = $('#rackRow1');
+    const row2 = $('#rackRow2');
+    row1.innerHTML = '';
+    row2.innerHTML = '';
+
+    for (let i = 0; i < RACK_SLOTS; i++) {
+      const slot = document.createElement('div');
+      slot.className = 'rack-slot';
+      slot.dataset.index = i;
+
+      slot.addEventListener('dragover', e => {
+        e.preventDefault();
+        clearSlotHighlights();
+        slot.classList.add('hovered');
+      });
+      slot.addEventListener('dragleave', () => slot.classList.remove('hovered'));
+      slot.addEventListener('drop', e => {
+        e.preventDefault();
+        clearSlotHighlights();
+        $('#rackContainer').classList.remove('drag-active');
+        const action = e.dataTransfer.getData('action');
+        if (action === 'draw-deck') {
+          pendingDrawTargetSlot = i;
+          socket.emit('drawTile', 'deck');
+        } else if (action === 'draw-discard') {
+          pendingDrawTargetSlot = i;
+          socket.emit('drawTile', 'discard');
+        } else if (action === 'move-tile') {
+          const fromIdx = parseInt(e.dataTransfer.getData('fromIndex'), 10);
+          if (!Number.isNaN(fromIdx)) {
+            moveTile(fromIdx, i);
+            playSound('tile');
+            renderRack();
+          }
+        }
+      });
+      slot.addEventListener('click', () => selectSlot(i));
+
+      const tid = localRack[i];
+      if (tid && tileMap[tid]) {
+        const t = tileMap[tid];
+        const tEl = tileEl(t, { classic: true });
+        tEl.classList.add('clickable');
+        tEl.draggable = true;
+        tEl.dataset.tid = t.id;
+        if (selectedSlotIndex === i) tEl.classList.add('selected');
+        tEl.addEventListener('dragstart', e => {
+          e.dataTransfer.setData('action', 'move-tile');
+          e.dataTransfer.setData('fromIndex', String(i));
+          playSound('tile');
+          $('#rackContainer').classList.add('drag-active');
+        });
+        tEl.addEventListener('dragend', () => $('#rackContainer').classList.remove('drag-active'));
+        tEl.addEventListener('click', e => { e.stopPropagation(); selectSlot(i); });
+        tEl.addEventListener('dblclick', e => { e.stopPropagation(); discardSlot(i); });
+        slot.appendChild(tEl);
+      }
+
+      (i < RACK_SLOTS / 2 ? row1 : row2).appendChild(slot);
     }
   }
 
-  $('#deckPile').addEventListener('click', () => { pulse($('#deckPile')); socket.emit('drawTile', 'deck'); });
-  $('#discardPile').addEventListener('click', () => { pulse($('#discardPile')); socket.emit('drawTile', 'discard'); });
-  $('#declareWinBtn').addEventListener('click', () => socket.emit('declareWin'));
-  $('#manualWinBtn').addEventListener('click', () => socket.emit('claimManualWin'));
+  // ---------- kupa (deste) ----------
+  const deckPileEl = $('#deckPile');
+  deckPileEl.addEventListener('click', () => {
+    const seat = mySeat();
+    if (!game || game.finished || seat === null || game.turnIndex !== seat || game.phase !== 'draw') {
+      showToast('Sıra sende değil ya da zaten taş çektin.');
+      return;
+    }
+    pulse(deckPileEl);
+    socket.emit('drawTile', 'deck');
+  });
+  deckPileEl.addEventListener('dragstart', e => {
+    const seat = mySeat();
+    if (!game || game.finished || seat === null || game.turnIndex !== seat || game.phase !== 'draw') {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData('action', 'draw-deck');
+    playSound('tile');
+    $('#rackContainer').classList.add('drag-active');
+  });
+  deckPileEl.addEventListener('dragend', () => $('#rackContainer').classList.remove('drag-active'));
 
   function pulse(el) {
     el.style.transform = 'scale(0.9)';
     setTimeout(() => { el.style.transform = ''; }, 140);
+  }
+
+  // ---------- bitiş bölgesi ----------
+  const finishZone = $('#finishDropZone');
+  finishZone.addEventListener('click', () => socket.emit('declareWin'));
+  finishZone.addEventListener('dragover', e => { e.preventDefault(); finishZone.classList.add('drag-over'); });
+  finishZone.addEventListener('dragleave', () => finishZone.classList.remove('drag-over'));
+  finishZone.addEventListener('drop', e => {
+    e.preventDefault();
+    finishZone.classList.remove('drag-over');
+    const action = e.dataTransfer.getData('action');
+    if (action === 'move-tile') socket.emit('declareWin');
+  });
+
+  // ---------- el bitti modalı ----------
+  const gameEndModal = $('#gameEndModal');
+  $('#gameEndNewHandBtn').addEventListener('click', () => { socket.emit('newHand'); gameEndModal.hidden = true; });
+  $('#gameEndCloseBtn').addEventListener('click', () => { gameEndModal.hidden = true; });
+  let gameEndModalShownFor = null;
+
+  function showGameEndModal() {
+    const key = (game.winnerId || 'draw') + ':' + game.turnIndex;
+    if (gameEndModalShownFor === key) { gameEndModal.hidden = false; return; }
+    gameEndModalShownFor = key;
+    $('#gameEndTitle').textContent = game.winnerId ? `🏆 ${nameOf(game.winnerId)} Kazandı!` : '🤝 El Berabere';
+    $('#gameEndBody').textContent = game.winnerId === myId
+      ? 'Tebrikler, eli bitirdin!'
+      : (game.winnerId ? `${nameOf(game.winnerId)} eli bitirdi.` : 'Bu el kimse kazanamadı.');
+    $('#gameEndNewHandBtn').hidden = !room || room.hostId !== myId;
+    gameEndModal.hidden = false;
+  }
+
+  // ---------- görsel sıra süre çubuğu ----------
+  function startVisualTurnTimer(seat) {
+    clearInterval(turnTimerInterval);
+    document.querySelectorAll('.timer-fill').forEach(el => (el.style.width = '100%'));
+    if (!game || game.finished || seat === null) return;
+    const zones = { 0: '#badgeMe', 1: '#badgeRight', 2: '#badgeTop', 3: '#badgeLeft' };
+    const rel = (game.turnIndex - seat + 4) % 4;
+    const fill = document.querySelector(zones[rel] + ' .timer-fill');
+    if (!fill) return;
+    let width = 100;
+    turnTimerInterval = setInterval(() => {
+      width -= 100 / 60; // ~15sn'lik görsel gösterge
+      if (width <= 0) { width = 0; clearInterval(turnTimerInterval); }
+      fill.style.width = width + '%';
+    }, 250);
+  }
+
+  function renderBadges(mySeatIdx) {
+    const zones = { 0: 'badgeMe', 1: 'badgeRight', 2: 'badgeTop', 3: 'badgeLeft' };
+    if (mySeatIdx === null) {
+      Object.values(zones).forEach(id => { $('#' + id).hidden = true; });
+      return;
+    }
+    for (let s = 0; s < 4; s++) {
+      const rel = (s - mySeatIdx + 4) % 4;
+      const el = $('#' + zones[rel]);
+      const occupantId = room.seats[s];
+      const occupant = room.players.find(p => p.id === occupantId);
+      el.hidden = !occupant;
+      if (!occupant) continue;
+      el.querySelector('.player-name').textContent = occupant.name + (occupant.bot ? ' 🤖' : '');
+      if (rel !== 0) {
+        const miniHost = el.querySelector('.mini-tiles');
+        miniHost.innerHTML = '';
+        const count = game.otherCounts?.[occupantId] || 0;
+        for (let i = 0; i < count; i++) miniHost.appendChild(tileEl(null, { faceDown: true }));
+      }
+      el.classList.toggle('active-turn', game.turnIndex === s && !game.finished);
+    }
+  }
+
+  function colorNameTr(c) {
+    return { kirmizi: 'Kırmızı', sari: 'Sarı', mavi: 'Mavi', siyah: 'Siyah' }[c] || c;
   }
 
   function renderGame() {
@@ -269,26 +559,46 @@
       indicatorHost.classList.add('indicator-reveal');
       indicatorRevealed = true;
     }
-    $('#okeySpecLabel').textContent = game.okeySpec
-      ? `${colorNameTr(game.okeySpec.color)} ${game.okeySpec.number}`
-      : '-';
+
+    // Okey rozeti (gösterge + 1)
+    const okeyHost = $('#okeyHolder');
+    okeyHost.className = 'tile';
+    if (game.okeySpec) {
+      okeyHost.classList.add('color-' + game.okeySpec.color);
+      okeyHost.textContent = String(game.okeySpec.number);
+      okeyHost.title = colorNameTr(game.okeySpec.color) + ' ' + game.okeySpec.number;
+    } else {
+      okeyHost.classList.add('tile-empty');
+    }
 
     $('#deckCount').textContent = game.deckCount;
 
-    // Orta yığın — değiştiyse pop animasyonu
-    const discardHost = $('#discardTopTile');
-    discardHost.className = 'tile';
-    if (game.discardTop) {
-      if (game.discardTop.joker) discardHost.classList.add('is-joker');
-      else discardHost.classList.add('color-' + game.discardTop.color);
-      discardHost.textContent = tileLabel(game.discardTop);
-      if (game.discardTop.id !== prevDiscardTopId) {
-        discardHost.classList.add('tile-pop');
+    // Atık taş — sırası gelen koltuğun önünde gösterilir
+    ['discardTopSpot', 'discardLeftSpot', 'discardRightSpot', 'discardPlayerSpot'].forEach(id => {
+      const spot = $('#' + id);
+      spot.innerHTML = '';
+      spot.classList.remove('takeable');
+      spot.onclick = null;
+    });
+    if (game.discardTop && seat !== null) {
+      const discarderSeat = (game.turnIndex - 1 + 4) % 4;
+      const rel = (discarderSeat - seat + 4) % 4; // 0=ben,1=sağ,2=üst,3=sol
+      const spotId = rel === 0 ? 'discardPlayerSpot' : rel === 1 ? 'discardRightSpot' : rel === 2 ? 'discardTopSpot' : 'discardLeftSpot';
+      const spot = $('#' + spotId);
+      const tNode = tileEl(game.discardTop, {});
+      spot.appendChild(tNode);
+      const takeable = game.phase === 'draw' && game.turnIndex === seat && !game.finished;
+      if (takeable) {
+        spot.classList.add('takeable');
+        tNode.draggable = true;
+        tNode.addEventListener('dragstart', e => {
+          e.dataTransfer.setData('action', 'draw-discard');
+          playSound('tile');
+          $('#rackContainer').classList.add('drag-active');
+        });
+        tNode.addEventListener('dragend', () => $('#rackContainer').classList.remove('drag-active'));
+        spot.onclick = () => socket.emit('drawTile', 'discard');
       }
-      prevDiscardTopId = game.discardTop.id;
-    } else {
-      discardHost.classList.add('tile-empty');
-      prevDiscardTopId = null;
     }
 
     const turnPlayer = room.players.find(p => p.seat === game.turnIndex);
@@ -298,322 +608,18 @@
 
     $('#newHandBtn').hidden = !(game.finished && room.hostId === myId);
 
-    renderRackAnimated();
-    renderRemoteSeats(seat);
-  }
+    reconcileRack(game.myHand || []);
+    renderRack();
+    renderBadges(seat);
 
-  /** Elin taşlarını, boş slotlar (aralıklar) bırakabilen sabit slotlu ıstakaya yerleştirir.
-   *  Hâlâ elde olan taşlar bulundukları slotta kalır; yeni çekilen taş ilk boş slota konur;
-   *  atılan/artık elde olmayan taşların slotu boşalır. */
-  function reconcileHandSlots(hand) {
-    const ids = new Set(hand.map(t => t.id));
-    for (let i = 0; i < TOTAL_SLOTS; i++) {
-      if (handSlots[i] && !ids.has(handSlots[i])) handSlots[i] = null;
-    }
-    const placed = new Set(handSlots.filter(Boolean));
-    const newTiles = hand.filter(t => !placed.has(t.id)).sort(sortTiles);
-    for (const t of newTiles) {
-      const slot = handSlots.indexOf(null);
-      if (slot !== -1) handSlots[slot] = t.id;
-    }
-  }
-
-  function getTileById(id) {
-    return (game && game.myHand || []).find(t => t.id === id);
-  }
-
-  /** Klasik 51-okey görünümü: iki katlı ahşap taşlık, sabit sayıda slottan oluşur.
-   *  Taşlar sürüklenerek slotlar arasında istenilen yere (boşluk bırakılarak dahi) taşınabilir. */
-  function renderRackAnimated() {
-    cancelActiveDrag(); // rack yeniden çiziliyor; sürükleme sırasında araya girmiş olabilecek bir taşıma varsa iptal et (hayalet taş kalmasın)
-
-    const rowTop = $('#rackRowTop');
-    const rowBottom = $('#rackRowBottom');
-
-    const prevRects = {};
-    document.querySelectorAll('#rackHolder .tile[data-tid]').forEach(el => {
-      prevRects[el.dataset.tid] = el.getBoundingClientRect();
-    });
-
-    const hand = game.myHand || [];
-    reconcileHandSlots(hand);
-    const byId = new Map(hand.map(t => [t.id, t]));
-
-    rowTop.innerHTML = '';
-    rowBottom.innerHTML = '';
-
-    const presentIds = [];
-    for (let i = 0; i < TOTAL_SLOTS; i++) {
-      const row = i < SLOTS_PER_ROW ? rowTop : rowBottom;
-      const slotEl = document.createElement('div');
-      slotEl.className = 'rack-slot';
-      slotEl.dataset.slot = i;
-      const tid = handSlots[i];
-      if (tid) {
-        const t = byId.get(tid);
-        if (t) {
-          const tileNode = tileEl(t, { clickable: true, classic: true, attachClick: false });
-          tileNode.dataset.tid = tid;
-          attachDragHandlers(tileNode, tid);
-          slotEl.appendChild(tileNode);
-          presentIds.push(tid);
-        }
-      }
-      row.appendChild(slotEl);
+    const turnKey = game.turnIndex + ':' + game.phase;
+    if (turnKey !== prevTurnKey) {
+      prevTurnKey = turnKey;
+      startVisualTurnTimer(seat);
     }
 
-    requestAnimationFrame(() => {
-      document.querySelectorAll('#rackHolder .tile[data-tid]').forEach(el => {
-        const id = el.dataset.tid;
-        const old = prevRects[id];
-        if (old) {
-          const newRect = el.getBoundingClientRect();
-          const dx = old.left - newRect.left;
-          const dy = old.top - newRect.top;
-          if (dx || dy) {
-            el.style.transition = 'none';
-            el.style.transform = `translate(${dx}px, ${dy}px)`;
-            requestAnimationFrame(() => {
-              el.style.transition = 'transform 0.22s ease';
-              el.style.transform = '';
-            });
-          }
-        } else if (!prevHandIds.includes(id)) {
-          el.classList.add('tile-enter');
-          setTimeout(() => el.classList.remove('tile-enter'), 330);
-        }
-      });
-      prevHandIds = presentIds;
-    });
-  }
-
-  // ============================================================
-  // SÜRÜKLE-BIRAK: taşları ıstakanın herhangi bir slotuna taşı,
-  // ıstakanın dışına (ortaya) sürükleyince taşı at
-  // ============================================================
-  function attachDragHandlers(el, tileId) {
-    el.addEventListener('pointerdown', e => {
-      if (e.pointerType === 'mouse' && e.button !== 0) return;
-      if (!game) return;
-      dragState = {
-        tileId,
-        pointerId: e.pointerId,
-        startX: e.clientX,
-        startY: e.clientY,
-        moved: false,
-        sourceEl: el,
-        ghost: null,
-        offsetX: 0,
-        offsetY: 0,
-        dropSlot: null,
-        dropOutside: false
-      };
-      try { el.setPointerCapture(e.pointerId); } catch (_) {}
-      el.addEventListener('pointermove', onDragPointerMove);
-      el.addEventListener('pointerup', onDragPointerUp);
-      el.addEventListener('pointercancel', onDragPointerCancel);
-    });
-  }
-
-  function onDragPointerMove(e) {
-    if (!dragState || e.pointerId !== dragState.pointerId) return;
-    const dx = e.clientX - dragState.startX;
-    const dy = e.clientY - dragState.startY;
-    if (!dragState.moved && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
-      dragState.moved = true;
-      createDragGhost(dragState, e);
-    }
-    if (dragState.moved) {
-      e.preventDefault();
-      positionDragGhost(dragState, e);
-      computeDropTarget(dragState, e);
-    }
-  }
-
-  function onDragPointerUp(e) {
-    if (!dragState || e.pointerId !== dragState.pointerId) return;
-    const state = dragState;
-    cleanupDragListeners(state);
-    if (state.moved) {
-      finalizeDrop(state);
-    } else {
-      const tile = getTileById(state.tileId);
-      if (tile) onTileClick(tile);
-    }
-    if (state.ghost) state.ghost.remove();
-    state.sourceEl.classList.remove('tile-drag-source');
-    clearDropHighlight();
-    dragState = null;
-  }
-
-  function onDragPointerCancel(e) {
-    if (!dragState || e.pointerId !== dragState.pointerId) return;
-    const state = dragState;
-    cleanupDragListeners(state);
-    if (state.ghost) state.ghost.remove();
-    state.sourceEl.classList.remove('tile-drag-source');
-    clearDropHighlight();
-    dragState = null;
-  }
-
-  function cleanupDragListeners(state) {
-    state.sourceEl.removeEventListener('pointermove', onDragPointerMove);
-    state.sourceEl.removeEventListener('pointerup', onDragPointerUp);
-    state.sourceEl.removeEventListener('pointercancel', onDragPointerCancel);
-  }
-
-  /** Aktif bir sürükleme varsa güvenle sonlandırır: hayalet taşı kaldırır, sınıfları temizler.
-   *  Rack yeniden çizilirken (örn. sunucudan yeni gameUpdate geldiğinde) sürüklenen taşın DOM
-   *  elemanı yok edileceğinden, tutamacı kaybolmuş bir sürükleme ekranda asılı kalmasın diye kullanılır. */
-  function cancelActiveDrag() {
-    if (!dragState) return;
-    const state = dragState;
-    try { cleanupDragListeners(state); } catch (_) {}
-    if (state.ghost) state.ghost.remove();
-    if (state.sourceEl) state.sourceEl.classList.remove('tile-drag-source');
-    clearDropHighlight();
-    dragState = null;
-  }
-
-  function createDragGhost(state, e) {
-    const rect = state.sourceEl.getBoundingClientRect();
-    const ghost = state.sourceEl.cloneNode(true);
-    ghost.classList.add('tile-drag-ghost');
-    ghost.style.position = 'fixed';
-    ghost.style.left = rect.left + 'px';
-    ghost.style.top = rect.top + 'px';
-    ghost.style.width = rect.width + 'px';
-    ghost.style.height = rect.height + 'px';
-    ghost.style.margin = '0';
-    ghost.style.pointerEvents = 'none';
-    ghost.style.zIndex = '200';
-    document.body.appendChild(ghost);
-    state.ghost = ghost;
-    state.offsetX = e.clientX - rect.left;
-    state.offsetY = e.clientY - rect.top;
-    state.sourceEl.classList.add('tile-drag-source');
-  }
-
-  function positionDragGhost(state, e) {
-    if (!state.ghost) return;
-    state.ghost.style.left = (e.clientX - state.offsetX) + 'px';
-    state.ghost.style.top = (e.clientY - state.offsetY) + 'px';
-  }
-
-  function clearDropHighlight() {
-    document.querySelectorAll('.rack-slot.drop-highlight').forEach(el => el.classList.remove('drop-highlight'));
-    $('#discardPile')?.classList.remove('drop-target-discard');
-  }
-
-  function computeDropTarget(state, e) {
-    clearDropHighlight();
-    const rackHolder = $('#rackHolder');
-    const rackRect = rackHolder.getBoundingClientRect();
-    const insideRack = e.clientX >= rackRect.left && e.clientX <= rackRect.right &&
-                        e.clientY >= rackRect.top && e.clientY <= rackRect.bottom;
-
-    if (!insideRack) {
-      state.dropOutside = true;
-      state.dropSlot = null;
-      $('#discardPile')?.classList.add('drop-target-discard');
-      return;
-    }
-    state.dropOutside = false;
-
-    if (state.ghost) state.ghost.style.display = 'none';
-    const under = document.elementFromPoint(e.clientX, e.clientY);
-    if (state.ghost) state.ghost.style.display = '';
-
-    const slotEl = under ? under.closest('.rack-slot') : null;
-    if (slotEl) {
-      state.dropSlot = parseInt(slotEl.dataset.slot, 10);
-      slotEl.classList.add('drop-highlight');
-    } else {
-      state.dropSlot = null;
-    }
-  }
-
-  /** Istakanın dışına (ortaya) bırakılan taşı atmayı dener; sıra/aşama uygun değilse taş elde kalır. */
-  function tryDiscardViaDrag(tileId) {
-    if (!game || game.finished) return false;
-    const seat = mySeat();
-    if (seat === null || game.turnIndex !== seat || game.phase !== 'discard') {
-      showToast('Önce taş çekmen gerekiyor / sıra sende değil.');
-      return false;
-    }
-    socket.emit('discardTile', tileId);
-    selectedTileId = null;
-    return true;
-  }
-
-  function finalizeDrop(state) {
-    if (state.dropOutside) {
-      tryDiscardViaDrag(state.tileId);
-      renderRackAnimated();
-      return;
-    }
-    const sourceSlot = handSlots.indexOf(state.tileId);
-    if (sourceSlot === -1) return;
-    const targetSlot = state.dropSlot;
-    if (targetSlot === null || targetSlot === sourceSlot) {
-      renderRackAnimated();
-      return;
-    }
-    const occupant = handSlots[targetSlot];
-    handSlots[targetSlot] = state.tileId;
-    handSlots[sourceSlot] = occupant || null;
-    renderRackAnimated();
-  }
-
-  function sortTiles(a, b) {
-    if (a.joker && b.joker) return 0;
-    if (a.joker) return 1;
-    if (b.joker) return -1;
-    if (a.color === b.color) return a.number - b.number;
-    return a.color.localeCompare(b.color);
-  }
-
-  function nameOf(id) {
-    const p = room.players.find(x => x.id === id);
-    return p ? p.name : '?';
-  }
-
-  function colorNameTr(c) {
-    return { kirmizi: 'Kırmızı', sari: 'Sarı', mavi: 'Mavi', siyah: 'Siyah' }[c] || c;
-  }
-
-  function renderRemoteSeats(mySeatIdx) {
-    const zones = { 1: $('#seatRight'), 2: $('#seatTop'), 3: $('#seatLeft') };
-    Object.values(zones).forEach(z => (z.innerHTML = ''));
-    if (mySeatIdx === null) return;
-
-    for (let s = 0; s < 4; s++) {
-      if (s === mySeatIdx) continue;
-      const rel = (s - mySeatIdx + 4) % 4; // 1=right,2=top,3=left
-      const zone = zones[rel];
-      if (!zone) continue;
-      const occupantId = room.seats[s];
-      const occupant = room.players.find(p => p.id === occupantId);
-      const wrap = document.createElement('div');
-      wrap.className = 'seat-remote-inner';
-      const nameEl = document.createElement('div');
-      nameEl.className = 'rname';
-      nameEl.textContent = occupant ? occupant.name : 'Boş koltuk';
-      if (occupant && occupant.bot) {
-        const tag = document.createElement('span');
-        tag.className = 'bot-tag';
-        tag.textContent = '🤖';
-        nameEl.appendChild(tag);
-      }
-      const tilesEl = document.createElement('div');
-      tilesEl.className = 'mini-tiles';
-      const count = occupantId ? (game.otherCounts?.[occupantId] || 0) : 0;
-      for (let i = 0; i < count; i++) tilesEl.appendChild(tileEl(null, { faceDown: true }));
-      wrap.appendChild(nameEl);
-      wrap.appendChild(tilesEl);
-      zone.appendChild(wrap);
-      zone.classList.toggle('active', game.turnIndex === s && !game.finished);
-    }
+    if (game.finished) showGameEndModal();
+    else { gameEndModal.hidden = true; gameEndModalShownFor = null; }
   }
 
   // ============================================================
