@@ -36,17 +36,44 @@
     showToast._t = setTimeout(() => { toast.hidden = true; }, 3200);
   }
 
-  function resetToLobby() {
-    room = null;
-    game = null;
-    selectedTileId = null;
-    prevHandIds = [];
-    prevDiscardTopId = null;
-    indicatorRevealed = false;
-    stopVoice();
-    chatMessages.innerHTML = '';
-    showView('lobby');
+  // ============================================================
+  // TAM EKRAN (masaüstü + mobil)
+  // ============================================================
+  function isFullscreen() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
   }
+
+  function enterFullscreen() {
+    const el = document.documentElement;
+    try {
+      const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
+      if (req) {
+        const result = req.call(el);
+        if (result && result.catch) result.catch(() => { /* kullanıcı jesti dışı / desteklenmiyor — sessizce yoksay */ });
+      }
+    } catch (_) { /* ignore */ }
+  }
+
+  function exitFullscreen() {
+    try {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
+      if (exit) exit.call(document);
+    } catch (_) { /* ignore */ }
+  }
+
+  function updateFullscreenBtn() {
+    const btn = $('#fullscreenBtn');
+    if (!btn) return;
+    btn.textContent = isFullscreen() ? '⤢' : '⛶';
+    btn.title = isFullscreen() ? 'Tam ekrandan çık' : 'Tam ekran';
+  }
+
+  $('#fullscreenBtn').addEventListener('click', () => {
+    if (isFullscreen()) exitFullscreen(); else enterFullscreen();
+  });
+  ['fullscreenchange', 'webkitfullscreenchange', 'MSFullscreenChange'].forEach(evt =>
+    document.addEventListener(evt, updateFullscreenBtn)
+  );
 
   // ============================================================
   // LOBBY
@@ -67,18 +94,21 @@
   });
 
   $('#quickPlayBtn').addEventListener('click', () => {
+    enterFullscreen();
     socket.emit('quickPlay', { name: getEnteredName() });
   });
 
   $('#createRoomBtn').addEventListener('click', () => {
+    enterFullscreen();
     const name = $('#nameInputCreate').value.trim() || 'Oyuncu';
     socket.emit('createRoom', { name });
   });
 
   $('#joinRoomBtn').addEventListener('click', () => {
-    const name = $('#nameInputJoin').value.trim() || 'Oyuncu';
     const code = $('#codeInput').value.trim().toUpperCase();
     if (!code) { showToast('Lütfen oda kodunu gir.'); return; }
+    enterFullscreen();
+    const name = $('#nameInputJoin').value.trim() || 'Oyuncu';
     socket.emit('joinRoom', { code, name });
   });
 
@@ -113,7 +143,7 @@
     seatGrid.appendChild(btn);
   }
   $('#spectatorBtn').addEventListener('click', () => socket.emit('chooseSeat', null));
-  $('#startGameBtn').addEventListener('click', () => socket.emit('startGame'));
+  $('#startGameBtn').addEventListener('click', () => { enterFullscreen(); socket.emit('startGame'); });
   $('#newHandBtn').addEventListener('click', () => socket.emit('newHand'));
 
   socket.on('roomUpdate', state => {
@@ -174,9 +204,10 @@
     return String(tile.number);
   }
 
-  function tileEl(tile, { clickable = false, faceDown = false } = {}) {
+  function tileEl(tile, { clickable = false, faceDown = false, classic = false } = {}) {
     const el = document.createElement('div');
     el.className = 'tile';
+    if (classic) el.classList.add('tile-classic');
     if (faceDown) { el.classList.add('tile-back'); return el; }
     if (!tile) { el.classList.add('tile-empty'); return el; }
     if (tile.joker) el.classList.add('is-joker');
@@ -200,9 +231,6 @@
       showToast('Önce taş çekmen gerekiyor / sıra sende değil.');
       return;
     }
-
-    // Bir kez tıkla: taşı seç. Aynı taşa tekrar tıkla: normal taş at.
-    // Bitmek istiyorsan bitiş taşını seçip "Bitir" düğmesine bas.
     if (selectedTileId === tile.id) {
       socket.emit('discardTile', tile.id);
       selectedTileId = null;
@@ -214,12 +242,8 @@
 
   $('#deckPile').addEventListener('click', () => { pulse($('#deckPile')); socket.emit('drawTile', 'deck'); });
   $('#discardPile').addEventListener('click', () => { pulse($('#discardPile')); socket.emit('drawTile', 'discard'); });
-  $('#drawDeckBtn').addEventListener('click', () => socket.emit('drawTile', 'deck'));
-  $('#drawDiscardBtn').addEventListener('click', () => socket.emit('drawTile', 'discard'));
-  $('#declareWinBtn').addEventListener('click', () => {
-    socket.emit('declareWin', selectedTileId);
-    selectedTileId = null;
-  });
+  $('#declareWinBtn').addEventListener('click', () => socket.emit('declareWin'));
+  $('#manualWinBtn').addEventListener('click', () => socket.emit('claimManualWin'));
 
   function pulse(el) {
     el.style.transform = 'scale(0.9)';
@@ -265,36 +289,39 @@
     const turnPlayer = room.players.find(p => p.seat === game.turnIndex);
     $('#turnBanner').textContent = game.finished
       ? (game.winnerId ? `🏆 ${nameOf(game.winnerId)} eli bitirdi!` : 'El bitti')
-      : (turnPlayer ? `Sıra: ${turnPlayer.name}${game.turnIndex === seat ? ' (Sen)' : ''} — ${game.phase === 'draw' ? 'taş çeksin' : 'taş atsın / bitirsin'}` : '-');
+      : (turnPlayer ? `Sıra: ${turnPlayer.name}${game.turnIndex === seat ? ' (Sen)' : ''} — ${game.phase === 'draw' ? 'taş çeksin' : 'taş atsın'}` : '-');
 
     $('#newHandBtn').hidden = !(game.finished && room.hostId === myId);
-    $('#declareWinBtn').disabled = game.finished || game.phase !== 'discard' || seat !== game.turnIndex;
-    $('#drawDeckBtn').disabled = game.finished || game.phase !== 'draw' || seat !== game.turnIndex;
-    $('#drawDiscardBtn').disabled = game.finished || game.phase !== 'draw' || seat !== game.turnIndex || !game.discardTop;
 
     renderRackAnimated();
     renderRemoteSeats(seat);
   }
 
+  /** Klasik 51-okey görünümü: elin taşları iki katlı ahşap taşlığa (üst/alt sıra) dağıtılır. */
   function renderRackAnimated() {
-    const rack = $('#myRack');
+    const rowTop = $('#rackRowTop');
+    const rowBottom = $('#rackRowBottom');
+
     const prevRects = {};
-    rack.querySelectorAll('.tile[data-tid]').forEach(el => {
+    document.querySelectorAll('#rackHolder .tile[data-tid]').forEach(el => {
       prevRects[el.dataset.tid] = el.getBoundingClientRect();
     });
 
-    rack.innerHTML = '';
+    rowTop.innerHTML = '';
+    rowBottom.innerHTML = '';
+
     const hand = (game.myHand || []).slice().sort(sortTiles);
     const newIds = hand.map(t => t.id);
+    const splitAt = Math.ceil(hand.length / 2);
 
-    hand.forEach(t => {
-      const el = tileEl(t, { clickable: true });
+    hand.forEach((t, i) => {
+      const el = tileEl(t, { clickable: true, classic: true });
       el.dataset.tid = t.id;
-      rack.appendChild(el);
+      (i < splitAt ? rowTop : rowBottom).appendChild(el);
     });
 
     requestAnimationFrame(() => {
-      rack.querySelectorAll('.tile[data-tid]').forEach(el => {
+      document.querySelectorAll('#rackHolder .tile[data-tid]').forEach(el => {
         const id = el.dataset.tid;
         const old = prevRects[id];
         if (old) {
@@ -399,6 +426,39 @@
     }
     chatMessages.appendChild(div);
     chatMessages.scrollTop = chatMessages.scrollHeight;
+  });
+
+  // ============================================================
+  // MANUAL WIN CLAIM DIALOG
+  // ============================================================
+  const manualDialog = $('#manualWinDialog');
+  socket.on('manualWinClaim', ({ claimantId, claimantName, hand }) => {
+    $('#manualWinTitle').textContent = `${claimantName} elini açtı`;
+    const tilesWrap = $('#manualWinTiles');
+    tilesWrap.innerHTML = '';
+    hand.slice().sort(sortTiles).forEach(t => tilesWrap.appendChild(tileEl(t, {})));
+
+    const actions = $('#manualWinActions');
+    actions.innerHTML = '';
+    if (room.hostId === myId && claimantId !== myId) {
+      const accept = document.createElement('button');
+      accept.className = 'btn btn-small btn-gold';
+      accept.textContent = 'Kabul Et (Bitti)';
+      accept.addEventListener('click', () => { socket.emit('resolveManualWin', { claimantId, accepted: true }); manualDialog.hidden = true; });
+      const reject = document.createElement('button');
+      reject.className = 'btn btn-small btn-ghost';
+      reject.textContent = 'Reddet';
+      reject.addEventListener('click', () => { socket.emit('resolveManualWin', { claimantId, accepted: false }); manualDialog.hidden = true; });
+      actions.append(accept, reject);
+    } else {
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'btn btn-small btn-ghost';
+      closeBtn.textContent = 'Kapat';
+      closeBtn.addEventListener('click', () => { manualDialog.hidden = true; });
+      actions.append(closeBtn);
+      showToast(room.hostId === myId ? 'Kendi elini onaylayamazsın.' : 'Masa (oda kurucusu) bu iddiayı değerlendiriyor...');
+    }
+    manualDialog.hidden = false;
   });
 
   // ============================================================
@@ -515,14 +575,11 @@
   });
 
   // ============================================================
-  // Tam ekran / kaydırma engelleme yardımcıları
+  // Kaydırma / zoom engelleme (tam ekran hissi)
   // ============================================================
   document.addEventListener('touchmove', e => {
-    // Kaydırılabilir alanların (rack, chat, seating) kendi iç kaydırmasına izin ver,
-    // sayfanın kendisinin (body) kaymasını/zoom'unu engelle.
     if (e.touches.length > 1) { e.preventDefault(); return; }
   }, { passive: false });
-
   document.addEventListener('gesturestart', e => e.preventDefault());
 
   // ============================================================
@@ -534,6 +591,6 @@
     return div.innerHTML;
   }
 
-  // Sayfa yenilendiğinde klasik masa durumu yeniden başlatılır.
+  // Sayfa her yenilendiğinde ana menüye düşer (state saklanmaz).
   showView('lobby');
 })();
