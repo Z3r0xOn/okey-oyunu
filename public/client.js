@@ -13,6 +13,9 @@
   let prevHandIds = [];
   let prevDiscardTopId = null;
   let indicatorRevealed = false;
+  let handOrder = [];   // kendi elindeki taşların kullanıcının serbestçe düzenlediği sırası
+  let dragState = null; // aktif sürükleme durumu
+  const DRAG_THRESHOLD = 6;
 
   const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -204,7 +207,7 @@
     return String(tile.number);
   }
 
-  function tileEl(tile, { clickable = false, faceDown = false, classic = false } = {}) {
+  function tileEl(tile, { clickable = false, faceDown = false, classic = false, attachClick = true } = {}) {
     const el = document.createElement('div');
     el.className = 'tile';
     if (classic) el.classList.add('tile-classic');
@@ -218,7 +221,7 @@
     el.textContent = tileLabel(tile);
     if (clickable) {
       el.classList.add('clickable');
-      el.addEventListener('click', () => onTileClick(tile));
+      if (attachClick) el.addEventListener('click', () => onTileClick(tile));
       if (tile.id === selectedTileId) el.classList.add('selected');
     }
     return el;
@@ -297,7 +300,26 @@
     renderRemoteSeats(seat);
   }
 
-  /** Klasik 51-okey görünümü: elin taşları iki katlı ahşap taşlığa (üst/alt sıra) dağıtılır. */
+  /** El listesindeki taşları, hâlâ elde olan taşlar için kullanıcının serbestçe belirlediği
+   *  sırayı korur; yeni gelen (çekilen) taşları sona ekler; artık elde olmayanları (atılanları) çıkarır. */
+  function reconcileHandOrder(hand) {
+    const ids = hand.map(t => t.id);
+    if (handOrder.length === 0) {
+      handOrder = hand.slice().sort(sortTiles).map(t => t.id);
+      return;
+    }
+    handOrder = handOrder.filter(id => ids.includes(id));
+    const known = new Set(handOrder);
+    const newOnes = hand.filter(t => !known.has(t.id)).sort(sortTiles);
+    newOnes.forEach(t => handOrder.push(t.id));
+  }
+
+  function getTileById(id) {
+    return (game && game.myHand || []).find(t => t.id === id);
+  }
+
+  /** Klasik 51-okey görünümü: elin taşları iki katlı ahşap taşlığa (üst/alt sıra) dağıtılır.
+   *  Taşların sırası, oyuncunun sürükleyerek yerleştirdiği serbest düzene göredir. */
   function renderRackAnimated() {
     const rowTop = $('#rackRowTop');
     const rowBottom = $('#rackRowBottom');
@@ -310,13 +332,17 @@
     rowTop.innerHTML = '';
     rowBottom.innerHTML = '';
 
-    const hand = (game.myHand || []).slice().sort(sortTiles);
-    const newIds = hand.map(t => t.id);
-    const splitAt = Math.ceil(hand.length / 2);
+    const hand = game.myHand || [];
+    reconcileHandOrder(hand);
+    const byId = new Map(hand.map(t => [t.id, t]));
+    const ordered = handOrder.map(id => byId.get(id)).filter(Boolean);
+    const newIds = ordered.map(t => t.id);
+    const splitAt = Math.ceil(ordered.length / 2);
 
-    hand.forEach((t, i) => {
-      const el = tileEl(t, { clickable: true, classic: true });
+    ordered.forEach((t, i) => {
+      const el = tileEl(t, { clickable: true, classic: true, attachClick: false });
       el.dataset.tid = t.id;
+      attachDragHandlers(el, t.id);
       (i < splitAt ? rowTop : rowBottom).appendChild(el);
     });
 
@@ -343,6 +369,174 @@
       });
       prevHandIds = newIds;
     });
+  }
+
+  // ============================================================
+  // SÜRÜKLE-BIRAK: taşları ıstakanın herhangi bir yerine taşı
+  // ============================================================
+  function attachDragHandlers(el, tileId) {
+    el.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      if (!game) return;
+      dragState = {
+        tileId,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        moved: false,
+        sourceEl: el,
+        ghost: null,
+        offsetX: 0,
+        offsetY: 0,
+        dropRefId: null,
+        dropBefore: null,
+        dropRow: null
+      };
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      el.addEventListener('pointermove', onDragPointerMove);
+      el.addEventListener('pointerup', onDragPointerUp);
+      el.addEventListener('pointercancel', onDragPointerCancel);
+    });
+  }
+
+  function onDragPointerMove(e) {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    if (!dragState.moved && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+      dragState.moved = true;
+      createDragGhost(dragState, e);
+    }
+    if (dragState.moved) {
+      e.preventDefault();
+      positionDragGhost(dragState, e);
+      computeDropTarget(dragState, e);
+    }
+  }
+
+  function onDragPointerUp(e) {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+    const state = dragState;
+    cleanupDragListeners(state);
+    if (state.moved) {
+      finalizeDrop(state);
+    } else {
+      const tile = getTileById(state.tileId);
+      if (tile) onTileClick(tile);
+    }
+    if (state.ghost) state.ghost.remove();
+    state.sourceEl.classList.remove('tile-drag-source');
+    clearDropHighlight();
+    dragState = null;
+  }
+
+  function onDragPointerCancel(e) {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+    const state = dragState;
+    cleanupDragListeners(state);
+    if (state.ghost) state.ghost.remove();
+    state.sourceEl.classList.remove('tile-drag-source');
+    clearDropHighlight();
+    dragState = null;
+  }
+
+  function cleanupDragListeners(state) {
+    state.sourceEl.removeEventListener('pointermove', onDragPointerMove);
+    state.sourceEl.removeEventListener('pointerup', onDragPointerUp);
+    state.sourceEl.removeEventListener('pointercancel', onDragPointerCancel);
+  }
+
+  function createDragGhost(state, e) {
+    const rect = state.sourceEl.getBoundingClientRect();
+    const ghost = state.sourceEl.cloneNode(true);
+    ghost.classList.add('tile-drag-ghost');
+    ghost.style.position = 'fixed';
+    ghost.style.left = rect.left + 'px';
+    ghost.style.top = rect.top + 'px';
+    ghost.style.width = rect.width + 'px';
+    ghost.style.height = rect.height + 'px';
+    ghost.style.margin = '0';
+    ghost.style.pointerEvents = 'none';
+    ghost.style.zIndex = '200';
+    document.body.appendChild(ghost);
+    state.ghost = ghost;
+    state.offsetX = e.clientX - rect.left;
+    state.offsetY = e.clientY - rect.top;
+    state.sourceEl.classList.add('tile-drag-source');
+  }
+
+  function positionDragGhost(state, e) {
+    if (!state.ghost) return;
+    state.ghost.style.left = (e.clientX - state.offsetX) + 'px';
+    state.ghost.style.top = (e.clientY - state.offsetY) + 'px';
+  }
+
+  function clearDropHighlight() {
+    document.querySelectorAll('.drop-before, .drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
+  }
+
+  function computeDropTarget(state, e) {
+    if (state.ghost) state.ghost.style.display = 'none';
+    const under = document.elementFromPoint(e.clientX, e.clientY);
+    if (state.ghost) state.ghost.style.display = '';
+
+    clearDropHighlight();
+    state.dropRefId = null;
+    state.dropRow = null;
+    state.dropBefore = null;
+
+    const targetTile = under ? under.closest('#rackHolder .tile[data-tid]') : null;
+    const rowEl = under ? under.closest('.rack-row') : null;
+
+    if (targetTile && targetTile.dataset.tid !== state.tileId) {
+      const rect = targetTile.getBoundingClientRect();
+      const before = e.clientX < rect.left + rect.width / 2;
+      state.dropRefId = targetTile.dataset.tid;
+      state.dropBefore = before;
+      targetTile.classList.add(before ? 'drop-before' : 'drop-after');
+      return;
+    }
+
+    if (rowEl) {
+      const tiles = Array.from(rowEl.querySelectorAll('.tile[data-tid]')).filter(t => t.dataset.tid !== state.tileId);
+      if (tiles.length === 0) {
+        state.dropRow = rowEl.id; // boş sıraya bırakılıyor
+        return;
+      }
+      let closest = tiles[0];
+      let closestDist = Infinity;
+      tiles.forEach(t => {
+        const r = t.getBoundingClientRect();
+        const cx = r.left + r.width / 2;
+        const d = Math.abs(e.clientX - cx);
+        if (d < closestDist) { closestDist = d; closest = t; }
+      });
+      const rect = closest.getBoundingClientRect();
+      const before = e.clientX < rect.left + rect.width / 2;
+      state.dropRefId = closest.dataset.tid;
+      state.dropBefore = before;
+      closest.classList.add(before ? 'drop-before' : 'drop-after');
+    }
+  }
+
+  function finalizeDrop(state) {
+    const curIndex = handOrder.indexOf(state.tileId);
+    if (curIndex === -1) return;
+    handOrder.splice(curIndex, 1);
+
+    let insertIndex;
+    if (state.dropRefId) {
+      const refIndex = handOrder.indexOf(state.dropRefId);
+      insertIndex = refIndex === -1 ? handOrder.length : (state.dropBefore ? refIndex : refIndex + 1);
+    } else if (state.dropRow === 'rackRowTop') {
+      insertIndex = 0;
+    } else if (state.dropRow === 'rackRowBottom') {
+      insertIndex = handOrder.length;
+    } else {
+      insertIndex = curIndex; // hedef bulunamadıysa yaklaşık aynı yere geri koy
+    }
+    handOrder.splice(insertIndex, 0, state.tileId);
+    renderRackAnimated();
   }
 
   function sortTiles(a, b) {
