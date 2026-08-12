@@ -412,8 +412,6 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
   box-shadow: 0 10px 24px rgba(0,0,0,0.5), 0 0 0 2px var(--gold-light);
   opacity: 0.96;
 }
-.tile.drop-before { box-shadow: inset 3px 0 0 var(--gold-light), 0 2px 0 rgba(0,0,0,0.25), 0 4px 8px rgba(0,0,0,0.3); }
-.tile.drop-after { box-shadow: inset -3px 0 0 var(--gold-light), 0 2px 0 rgba(0,0,0,0.25), 0 4px 8px rgba(0,0,0,0.3); }
 
 /* Klasik 51-okey taşlığındaki taşlar: kubbeli üst kenar, ahşap yuvaya oturmuş görünüm */
 .tile.tile-classic {
@@ -486,6 +484,32 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
   -webkit-overflow-scrolling: touch;
 }
 
+/* Sabit ıstaka slotu: dolu ya da boş (boşluk bırakılabilir), sürükleyip bırakma hedefi */
+.rack-slot {
+  width: 40px;
+  height: 55px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: box-shadow 0.12s ease, background 0.12s ease;
+}
+.rack-slot.drop-highlight {
+  background: rgba(212,175,55,0.16);
+  box-shadow: inset 0 0 0 2px var(--gold-light);
+}
+
+/* Taşı ıstaka dışına (ortaya) sürükleyince atma hedefini vurgula */
+.pile.discard-pile.drop-target-discard #discardTopTile,
+.pile.discard-pile.drop-target-discard {
+  filter: drop-shadow(0 0 6px var(--gold-light));
+}
+.pile.discard-pile.drop-target-discard #discardTopTile.tile-empty {
+  border-color: var(--gold-light);
+  background: rgba(212,175,55,0.14);
+}
+
 /* ---------- Chat panel ---------- */
 .chat-panel {
   position: fixed; top: 0; right: 0; height: 100%; width: 320px; max-width: 88vw;
@@ -525,12 +549,14 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
 /* ---------- Responsive ---------- */
 @media (max-width: 380px) {
   .tile { width: 32px; height: 46px; font-size: 0.82rem; }
+  .rack-slot { width: 32px; height: 46px; }
   .seat-remote .tile { width: 13px; height: 19px; }
   .ad-side-inner span { font-size: 0.55rem; }
 }
 
 @media (min-width: 900px) {
   .tile { width: 50px; height: 68px; font-size: 1.2rem; }
+  .rack-slot { width: 50px; height: 68px; }
   .rack-row { min-height: 92px; }
 }
 
