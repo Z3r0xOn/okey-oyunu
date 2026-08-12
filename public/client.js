@@ -325,6 +325,8 @@
   /** Klasik 51-okey görünümü: iki katlı ahşap taşlık, sabit sayıda slottan oluşur.
    *  Taşlar sürüklenerek slotlar arasında istenilen yere (boşluk bırakılarak dahi) taşınabilir. */
   function renderRackAnimated() {
+    cancelActiveDrag(); // rack yeniden çiziliyor; sürükleme sırasında araya girmiş olabilecek bir taşıma varsa iptal et (hayalet taş kalmasın)
+
     const rowTop = $('#rackRowTop');
     const rowBottom = $('#rackRowBottom');
 
@@ -458,6 +460,19 @@
     state.sourceEl.removeEventListener('pointermove', onDragPointerMove);
     state.sourceEl.removeEventListener('pointerup', onDragPointerUp);
     state.sourceEl.removeEventListener('pointercancel', onDragPointerCancel);
+  }
+
+  /** Aktif bir sürükleme varsa güvenle sonlandırır: hayalet taşı kaldırır, sınıfları temizler.
+   *  Rack yeniden çizilirken (örn. sunucudan yeni gameUpdate geldiğinde) sürüklenen taşın DOM
+   *  elemanı yok edileceğinden, tutamacı kaybolmuş bir sürükleme ekranda asılı kalmasın diye kullanılır. */
+  function cancelActiveDrag() {
+    if (!dragState) return;
+    const state = dragState;
+    try { cleanupDragListeners(state); } catch (_) {}
+    if (state.ghost) state.ghost.remove();
+    if (state.sourceEl) state.sourceEl.classList.remove('tile-drag-source');
+    clearDropHighlight();
+    dragState = null;
   }
 
   function createDragGhost(state, e) {
