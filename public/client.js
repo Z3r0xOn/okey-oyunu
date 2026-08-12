@@ -13,7 +13,9 @@
   let prevHandIds = [];
   let prevDiscardTopId = null;
   let indicatorRevealed = false;
-  let handOrder = [];   // kendi elindeki taşların kullanıcının serbestçe düzenlediği sırası
+  let handSlots = new Array(20).fill(null); // ıstakadaki 20 sabit slot: tileId ya da null (boşluk)
+  const SLOTS_PER_ROW = 10;
+  const TOTAL_SLOTS = 20;
   let dragState = null; // aktif sürükleme durumu
   const DRAG_THRESHOLD = 6;
 
@@ -300,26 +302,28 @@
     renderRemoteSeats(seat);
   }
 
-  /** El listesindeki taşları, hâlâ elde olan taşlar için kullanıcının serbestçe belirlediği
-   *  sırayı korur; yeni gelen (çekilen) taşları sona ekler; artık elde olmayanları (atılanları) çıkarır. */
-  function reconcileHandOrder(hand) {
-    const ids = hand.map(t => t.id);
-    if (handOrder.length === 0) {
-      handOrder = hand.slice().sort(sortTiles).map(t => t.id);
-      return;
+  /** Elin taşlarını, boş slotlar (aralıklar) bırakabilen sabit slotlu ıstakaya yerleştirir.
+   *  Hâlâ elde olan taşlar bulundukları slotta kalır; yeni çekilen taş ilk boş slota konur;
+   *  atılan/artık elde olmayan taşların slotu boşalır. */
+  function reconcileHandSlots(hand) {
+    const ids = new Set(hand.map(t => t.id));
+    for (let i = 0; i < TOTAL_SLOTS; i++) {
+      if (handSlots[i] && !ids.has(handSlots[i])) handSlots[i] = null;
     }
-    handOrder = handOrder.filter(id => ids.includes(id));
-    const known = new Set(handOrder);
-    const newOnes = hand.filter(t => !known.has(t.id)).sort(sortTiles);
-    newOnes.forEach(t => handOrder.push(t.id));
+    const placed = new Set(handSlots.filter(Boolean));
+    const newTiles = hand.filter(t => !placed.has(t.id)).sort(sortTiles);
+    for (const t of newTiles) {
+      const slot = handSlots.indexOf(null);
+      if (slot !== -1) handSlots[slot] = t.id;
+    }
   }
 
   function getTileById(id) {
     return (game && game.myHand || []).find(t => t.id === id);
   }
 
-  /** Klasik 51-okey görünümü: elin taşları iki katlı ahşap taşlığa (üst/alt sıra) dağıtılır.
-   *  Taşların sırası, oyuncunun sürükleyerek yerleştirdiği serbest düzene göredir. */
+  /** Klasik 51-okey görünümü: iki katlı ahşap taşlık, sabit sayıda slottan oluşur.
+   *  Taşlar sürüklenerek slotlar arasında istenilen yere (boşluk bırakılarak dahi) taşınabilir. */
   function renderRackAnimated() {
     const rowTop = $('#rackRowTop');
     const rowBottom = $('#rackRowBottom');
@@ -329,22 +333,32 @@
       prevRects[el.dataset.tid] = el.getBoundingClientRect();
     });
 
+    const hand = game.myHand || [];
+    reconcileHandSlots(hand);
+    const byId = new Map(hand.map(t => [t.id, t]));
+
     rowTop.innerHTML = '';
     rowBottom.innerHTML = '';
 
-    const hand = game.myHand || [];
-    reconcileHandOrder(hand);
-    const byId = new Map(hand.map(t => [t.id, t]));
-    const ordered = handOrder.map(id => byId.get(id)).filter(Boolean);
-    const newIds = ordered.map(t => t.id);
-    const splitAt = Math.ceil(ordered.length / 2);
-
-    ordered.forEach((t, i) => {
-      const el = tileEl(t, { clickable: true, classic: true, attachClick: false });
-      el.dataset.tid = t.id;
-      attachDragHandlers(el, t.id);
-      (i < splitAt ? rowTop : rowBottom).appendChild(el);
-    });
+    const presentIds = [];
+    for (let i = 0; i < TOTAL_SLOTS; i++) {
+      const row = i < SLOTS_PER_ROW ? rowTop : rowBottom;
+      const slotEl = document.createElement('div');
+      slotEl.className = 'rack-slot';
+      slotEl.dataset.slot = i;
+      const tid = handSlots[i];
+      if (tid) {
+        const t = byId.get(tid);
+        if (t) {
+          const tileNode = tileEl(t, { clickable: true, classic: true, attachClick: false });
+          tileNode.dataset.tid = tid;
+          attachDragHandlers(tileNode, tid);
+          slotEl.appendChild(tileNode);
+          presentIds.push(tid);
+        }
+      }
+      row.appendChild(slotEl);
+    }
 
     requestAnimationFrame(() => {
       document.querySelectorAll('#rackHolder .tile[data-tid]').forEach(el => {
@@ -367,12 +381,13 @@
           setTimeout(() => el.classList.remove('tile-enter'), 330);
         }
       });
-      prevHandIds = newIds;
+      prevHandIds = presentIds;
     });
   }
 
   // ============================================================
-  // SÜRÜKLE-BIRAK: taşları ıstakanın herhangi bir yerine taşı
+  // SÜRÜKLE-BIRAK: taşları ıstakanın herhangi bir slotuna taşı,
+  // ıstakanın dışına (ortaya) sürükleyince taşı at
   // ============================================================
   function attachDragHandlers(el, tileId) {
     el.addEventListener('pointerdown', e => {
@@ -388,9 +403,8 @@
         ghost: null,
         offsetX: 0,
         offsetY: 0,
-        dropRefId: null,
-        dropBefore: null,
-        dropRow: null
+        dropSlot: null,
+        dropOutside: false
       };
       try { el.setPointerCapture(e.pointerId); } catch (_) {}
       el.addEventListener('pointermove', onDragPointerMove);
@@ -472,70 +486,67 @@
   }
 
   function clearDropHighlight() {
-    document.querySelectorAll('.drop-before, .drop-after').forEach(el => el.classList.remove('drop-before', 'drop-after'));
+    document.querySelectorAll('.rack-slot.drop-highlight').forEach(el => el.classList.remove('drop-highlight'));
+    $('#discardPile')?.classList.remove('drop-target-discard');
   }
 
   function computeDropTarget(state, e) {
+    clearDropHighlight();
+    const rackHolder = $('#rackHolder');
+    const rackRect = rackHolder.getBoundingClientRect();
+    const insideRack = e.clientX >= rackRect.left && e.clientX <= rackRect.right &&
+                        e.clientY >= rackRect.top && e.clientY <= rackRect.bottom;
+
+    if (!insideRack) {
+      state.dropOutside = true;
+      state.dropSlot = null;
+      $('#discardPile')?.classList.add('drop-target-discard');
+      return;
+    }
+    state.dropOutside = false;
+
     if (state.ghost) state.ghost.style.display = 'none';
     const under = document.elementFromPoint(e.clientX, e.clientY);
     if (state.ghost) state.ghost.style.display = '';
 
-    clearDropHighlight();
-    state.dropRefId = null;
-    state.dropRow = null;
-    state.dropBefore = null;
-
-    const targetTile = under ? under.closest('#rackHolder .tile[data-tid]') : null;
-    const rowEl = under ? under.closest('.rack-row') : null;
-
-    if (targetTile && targetTile.dataset.tid !== state.tileId) {
-      const rect = targetTile.getBoundingClientRect();
-      const before = e.clientX < rect.left + rect.width / 2;
-      state.dropRefId = targetTile.dataset.tid;
-      state.dropBefore = before;
-      targetTile.classList.add(before ? 'drop-before' : 'drop-after');
-      return;
-    }
-
-    if (rowEl) {
-      const tiles = Array.from(rowEl.querySelectorAll('.tile[data-tid]')).filter(t => t.dataset.tid !== state.tileId);
-      if (tiles.length === 0) {
-        state.dropRow = rowEl.id; // boş sıraya bırakılıyor
-        return;
-      }
-      let closest = tiles[0];
-      let closestDist = Infinity;
-      tiles.forEach(t => {
-        const r = t.getBoundingClientRect();
-        const cx = r.left + r.width / 2;
-        const d = Math.abs(e.clientX - cx);
-        if (d < closestDist) { closestDist = d; closest = t; }
-      });
-      const rect = closest.getBoundingClientRect();
-      const before = e.clientX < rect.left + rect.width / 2;
-      state.dropRefId = closest.dataset.tid;
-      state.dropBefore = before;
-      closest.classList.add(before ? 'drop-before' : 'drop-after');
+    const slotEl = under ? under.closest('.rack-slot') : null;
+    if (slotEl) {
+      state.dropSlot = parseInt(slotEl.dataset.slot, 10);
+      slotEl.classList.add('drop-highlight');
+    } else {
+      state.dropSlot = null;
     }
   }
 
-  function finalizeDrop(state) {
-    const curIndex = handOrder.indexOf(state.tileId);
-    if (curIndex === -1) return;
-    handOrder.splice(curIndex, 1);
-
-    let insertIndex;
-    if (state.dropRefId) {
-      const refIndex = handOrder.indexOf(state.dropRefId);
-      insertIndex = refIndex === -1 ? handOrder.length : (state.dropBefore ? refIndex : refIndex + 1);
-    } else if (state.dropRow === 'rackRowTop') {
-      insertIndex = 0;
-    } else if (state.dropRow === 'rackRowBottom') {
-      insertIndex = handOrder.length;
-    } else {
-      insertIndex = curIndex; // hedef bulunamadıysa yaklaşık aynı yere geri koy
+  /** Istakanın dışına (ortaya) bırakılan taşı atmayı dener; sıra/aşama uygun değilse taş elde kalır. */
+  function tryDiscardViaDrag(tileId) {
+    if (!game || game.finished) return false;
+    const seat = mySeat();
+    if (seat === null || game.turnIndex !== seat || game.phase !== 'discard') {
+      showToast('Önce taş çekmen gerekiyor / sıra sende değil.');
+      return false;
     }
-    handOrder.splice(insertIndex, 0, state.tileId);
+    socket.emit('discardTile', tileId);
+    selectedTileId = null;
+    return true;
+  }
+
+  function finalizeDrop(state) {
+    if (state.dropOutside) {
+      tryDiscardViaDrag(state.tileId);
+      renderRackAnimated();
+      return;
+    }
+    const sourceSlot = handSlots.indexOf(state.tileId);
+    if (sourceSlot === -1) return;
+    const targetSlot = state.dropSlot;
+    if (targetSlot === null || targetSlot === sourceSlot) {
+      renderRackAnimated();
+      return;
+    }
+    const occupant = handSlots[targetSlot];
+    handSlots[targetSlot] = state.tileId;
+    handSlots[sourceSlot] = occupant || null;
     renderRackAnimated();
   }
 
