@@ -402,8 +402,18 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
 .tile.is-joker { background: linear-gradient(160deg, var(--gold-light), var(--gold)); color: #241a05; font-size: 0.8rem; }
 .tile.is-okey { box-shadow: 0 0 0 2px var(--gold), 0 4px 10px rgba(212,175,55,0.5); }
 .tile.selected { transform: translateY(-10px); box-shadow: 0 0 0 2px var(--gold-light), 0 8px 14px rgba(0,0,0,0.4); }
-.tile.clickable { cursor: pointer; }
+.tile.clickable { cursor: pointer; touch-action: none; }
 .tile.clickable:hover { transform: translateY(-4px); }
+
+/* ---------- Taş sürükleme (ıstakada serbest yerleştirme) ---------- */
+.tile.tile-drag-source { opacity: 0.3; }
+.tile-drag-ghost {
+  transform: scale(1.08) rotate(-2deg);
+  box-shadow: 0 10px 24px rgba(0,0,0,0.5), 0 0 0 2px var(--gold-light);
+  opacity: 0.96;
+}
+.tile.drop-before { box-shadow: inset 3px 0 0 var(--gold-light), 0 2px 0 rgba(0,0,0,0.25), 0 4px 8px rgba(0,0,0,0.3); }
+.tile.drop-after { box-shadow: inset -3px 0 0 var(--gold-light), 0 2px 0 rgba(0,0,0,0.25), 0 4px 8px rgba(0,0,0,0.3); }
 
 /* Klasik 51-okey taşlığındaki taşlar: kubbeli üst kenar, ahşap yuvaya oturmuş görünüm */
 .tile.tile-classic {
