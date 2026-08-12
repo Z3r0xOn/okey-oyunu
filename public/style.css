@@ -493,7 +493,8 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  transition: box-shadow 0.12s ease, background 0.12s ease;
+  border: 1px dashed rgba(212,175,55,0.16);
+  transition: box-shadow 0.12s ease, background 0.12s ease, border-color 0.12s ease;
 }
 .rack-slot.drop-highlight {
   background: rgba(212,175,55,0.16);
