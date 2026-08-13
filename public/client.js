@@ -194,21 +194,25 @@
   // ============================================================
   // GAME MEKANİKLERİ VE SOKET ENTEGRASYONU
   // ============================================================
-  socket.on('gameUpdate', state => {
+ socket.on('gameUpdate', state => {
     const prevTurn = game?.turnIndex;
     const prevPhase = game?.phase;
     game = state;
 
     if (game) {
       showView('game');
+      
+      // 1. Taşları sunucudan gelen el verisine göre senkronize et
       syncHandToRack(game.myHand || []);
 
-      // Sıra değişimi kontrolü ve Zamanlayıcı sıfırlama
+      // 2. Sıra değiştiyse zamanlayıcıyı sıfırla
       if (prevTurn !== game.turnIndex || prevPhase !== game.phase) {
         resetTimer();
       }
 
+      // 3. Masayı VE ıstakayı ekrana çiz
       renderGame();
+      renderRackAnimated(); // <-- TAŞLARIN EKRANA GELMESİNİ SAĞLAYAN KRİTİK ÇAĞRI
     }
   });
 
