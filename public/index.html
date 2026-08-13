@@ -52,11 +52,26 @@
 <span class="status-dot"></span>
 <span id="status-text">Oyun yükleniyor...</span>
 </div>
-<button class="header-btn" onclick="toggleSound()">
+<div class="header-controls">
+<button class="header-btn voice-header-btn" id="voice-toggle" type="button" onclick="toggleVoiceChat()">
+<span id="voice-icon">🎙</span> <span id="voice-text">Sesli Sohbet</span>
+</button>
+<button class="header-btn chat-header-btn" id="chat-toggle" type="button" onclick="toggleChat()">
+<span>💬</span> <span>Chat</span>
+</button>
+<button class="header-btn" type="button" onclick="toggleSound()">
 <span id="sound-icon">🔊</span> <span id="sound-text">Ses: AÇIK</span>
 </button>
+<button class="header-btn menu-header-btn" type="button" onclick="confirmReturnToMenu()">
+<span>☰</span> <span>Ana Menü</span>
+</button>
+</div>
 </header>
 <main id="game-board">
+<div class="ad-slot ad-top-left" aria-label="Reklam alanı">REKLAM</div>
+<div class="ad-slot ad-top-right" aria-label="Reklam alanı">REKLAM</div>
+<div class="ad-slot ad-bottom-left" aria-label="Reklam alanı">REKLAM</div>
+<div class="ad-slot ad-bottom-right" aria-label="Reklam alanı">REKLAM</div>
 <div class="player-badge" id="seat-top">
 <div class="player-avatar">👩</div>
 <div class="player-info">
@@ -110,6 +125,36 @@
 </div>
 </div>
 </main>
+
+<div class="game-utility-panel" id="chat-panel" aria-hidden="true">
+<div class="utility-header">
+<strong>💬 SOHBET</strong>
+<button type="button" class="utility-close" onclick="toggleChat(false)" aria-label="Sohbeti kapat">×</button>
+</div>
+<div class="chat-messages" id="chat-messages"></div>
+<form class="chat-form" id="chat-form">
+<input id="chat-input" maxlength="500" autocomplete="off" placeholder="Mesaj yaz..." aria-label="Mesaj"/>
+<button type="submit" aria-label="Gönder">➤</button>
+</form>
+</div>
+
+<div class="voice-status" id="voice-status" hidden>
+<span class="voice-dot"></span> <span id="voice-status-text">Sesli sohbet hazırlanıyor...</span>
+</div>
+
+<div class="leave-modal" id="leave-modal" aria-hidden="true">
+<div class="leave-card">
+<div class="leave-title">ANA MENÜYE DÖN</div>
+<div class="leave-body">Oyundan çıkmak istediğinize emin misiniz? Mevcut elinizden ayrılacaksınız.</div>
+<div class="leave-actions">
+<button class="btn-action" type="button" onclick="closeLeaveModal()">İPTAL</button>
+<button class="btn-action btn-finish" type="button" onclick="returnToMainMenu()">ÇIK VE ANA MENÜ</button>
+</div>
+</div>
+</div>
+
+<div id="remote-audio-container" aria-hidden="true"></div>
+
 <div id="rack-container">
 <div class="rack-row" id="rack-row-1"></div>
 <div class="rack-row" id="rack-row-2"></div>
