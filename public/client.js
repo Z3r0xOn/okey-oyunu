@@ -1,810 +1,172 @@
 (() => {
   const socket = io();
-
-  // ---------- STATE ----------
-  let myId = null;
-  let room = null;      // publicRoomState
-  let game = null;      // personalGameView
-  let selectedTileId = null;
-  let voiceOn = false;
-  let localStream = null;
-  const peerConnections = {}; // peerId -> RTCPeerConnection
-  const audioEls = {};        // peerId -> <audio>
-  let prevHandIds = [];
-  let prevDiscardTopId = null;
-  let indicatorRevealed = false;
-
-  // --- SİSTEM 1 & 2 VERİ MODELİ (ISTAKA & DRAG) ---
-  const RACK_SIZE = 22;
-  let rackData = new Array(RACK_SIZE).fill(null);
-  let draggedTileIndex = null;
-
-  // --- SİSTEM 3 SÜRE YÖNETİMİ ---
-  let timerInterval = null;
-  let timeRemaining = 100;
-
+  let myId = null, room = null, game = null;
+  let selectedSlotIndex = null, draggedIndices = [], rackSlots = new Array(32).fill(null);
+  let isMouseSelecting = false, dragSelectStart = null, longPressTimer = null, isLongPress = false;
+  let soundEnabled = true, audioCtx = null, turnTimer = null;
+  let prevHandIds = [], prevDiscardId = null, indicatorRevealed = false;
+  let voiceOn = false, localStream = null;
+  const peerConnections = {}, audioEls = {};
   const rtcConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+  const $ = s => document.querySelector(s);
+  const viewLobby = $('#view-lobby'), viewWaiting = $('#view-waiting'), viewGame = $('#view-game'), toast = $('#toast');
 
-  // ---------- DOM REFS ----------
-  const $ = sel => document.querySelector(sel);
-  const viewLobby = $('#view-lobby');
-  const viewWaiting = $('#view-waiting');
-  const viewGame = $('#view-game');
-  const toast = $('#toast');
+  function showView(name){ viewLobby.hidden=name!=='lobby'; viewWaiting.hidden=name!=='waiting'; viewGame.hidden=name!=='game'; }
+  function showToast(msg){ toast.textContent=msg; toast.hidden=false; clearTimeout(showToast.t); showToast.t=setTimeout(()=>toast.hidden=true,3200); }
+  function escapeHtml(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
 
-  function showView(name) {
-    viewLobby.hidden = name !== 'lobby';
-    viewWaiting.hidden = name !== 'waiting';
-    viewGame.hidden = name !== 'game';
+  function isFullscreen(){return !!(document.fullscreenElement||document.webkitFullscreenElement||document.msFullscreenElement)}
+  function enterFullscreen(){try{const e=document.documentElement,r=e.requestFullscreen||e.webkitRequestFullscreen||e.msRequestFullscreen;if(r){const x=r.call(e);if(x?.catch)x.catch(()=>{})}}catch{}}
+  function exitFullscreen(){try{(document.exitFullscreen||document.webkitExitFullscreen||document.msExitFullscreen)?.call(document)}catch{}}
+  function updateFullscreenBtn(){const b=$('#fullscreenBtn');if(!b)return;b.textContent=isFullscreen()?'⤢':'⛶';b.title=isFullscreen()?'Tam ekrandan çık':'Tam ekran'}
+  $('#fullscreenBtn')?.addEventListener('click',()=>isFullscreen()?exitFullscreen():enterFullscreen());
+  ['fullscreenchange','webkitfullscreenchange','MSFullscreenChange'].forEach(e=>document.addEventListener(e,updateFullscreenBtn));
+
+  // ---------- Lobby ----------
+  function enteredName(){return $('#nameInputCreate')?.value.trim()||$('#nameInputJoin')?.value.trim()||'Oyuncu'}
+  document.querySelectorAll('.tab-btn').forEach(btn=>btn.addEventListener('click',()=>{
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');
+    document.querySelectorAll('.auth-panel').forEach(p=>p.classList.remove('active'));$('#panel-'+btn.dataset.tab)?.classList.add('active');
+  }));
+  $('#quickPlayBtn')?.addEventListener('click',()=>{enterFullscreen();socket.emit('quickPlay',{name:enteredName()})});
+  $('#createRoomBtn')?.addEventListener('click',()=>{enterFullscreen();socket.emit('createRoom',{name:$('#nameInputCreate').value.trim()||'Oyuncu'})});
+  $('#joinRoomBtn')?.addEventListener('click',()=>{const code=$('#codeInput').value.trim().toUpperCase();if(!code)return showToast('Lütfen oda kodunu gir.');enterFullscreen();socket.emit('joinRoom',{code,name:$('#nameInputJoin').value.trim()||'Oyuncu'})});
+  socket.on('connect',()=>{myId=socket.id});
+  socket.on('errorMsg',showToast);
+  socket.on('onlineCount',n=>{if($('#onlineCount'))$('#onlineCount').textContent=n});
+  socket.on('joinedRoom',({code,quick})=>{$('#roomCodeLabel').textContent=code;$('#roomCodeLabel2').textContent=code;if(!quick)showView('waiting')});
+  $('#copyCodeBtn')?.addEventListener('click',()=>{const c=$('#roomCodeLabel').textContent;navigator.clipboard?.writeText(c).then(()=>showToast('Oda kodu kopyalandı: '+c))});
+  $('#leaveWaitingBtn')?.addEventListener('click',()=>location.reload());
+  $('#leaveGameBtn')?.addEventListener('click',()=>location.reload());
+
+  // ---------- Waiting ----------
+  const seatGrid=$('#seatGrid');
+  for(let i=0;i<4;i++){
+    const b=document.createElement('button');b.className='seat-btn';b.innerHTML=`<span class="seat-num">Koltuk ${i+1}</span><span class="seat-name">Boş</span>`;
+    b.addEventListener('click',()=>socket.emit('chooseSeat',i));seatGrid.appendChild(b);
+  }
+  $('#spectatorBtn')?.addEventListener('click',()=>socket.emit('chooseSeat',null));
+  $('#startGameBtn')?.addEventListener('click',()=>{enterFullscreen();socket.emit('startGame')});
+  $('#newHandBtn')?.addEventListener('click',()=>socket.emit('newHand'));
+  socket.on('roomUpdate',s=>{room=s;renderWaiting();if(s.gameActive)showView('game')});
+  function renderWaiting(){
+    if(!room)return;const host=room.hostId===myId;
+    seatGrid.querySelectorAll('.seat-btn').forEach((b,i)=>{const id=room.seats[i],p=room.players.find(x=>x.id===id);b.classList.toggle('occupied',!!p);b.classList.toggle('mine',id===myId);b.querySelector('.seat-name').textContent=p?p.name:'Boş'});
+    const list=$('#playersList');list.innerHTML='';room.players.forEach(p=>{const d=document.createElement('div');d.className='player-chip'+(p.id===room.hostId?' host':'');d.innerHTML=`<span>${escapeHtml(p.name)}</span><span class="spot">— ${p.seat!==null?'Koltuk '+(p.seat+1):'İzleyici'}</span>`;list.appendChild(d)});
+    const filled=room.seats.filter(Boolean).length;$('#startGameBtn').hidden=!host;$('#startGameBtn').disabled=filled!==4;$('#startHint').textContent=host?(filled===4?'Herkes hazır — oyunu başlatabilirsin.':`Oyun başlamadan önce 4 koltuğun dolu olması gerekiyor (${filled}/4).`):'Oda kurucusunun oyunu başlatmasını bekleyin.';
   }
 
-  function showToast(msg) {
-    toast.textContent = msg;
-    toast.hidden = false;
-    clearTimeout(showToast._t);
-    showToast._t = setTimeout(() => { toast.hidden = true; }, 3200);
+  // ---------- Sound ----------
+  function playSound(type){if(!soundEnabled)return;const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;if(!audioCtx)audioCtx=new AC();if(audioCtx.state==='suspended')audioCtx.resume();const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.connect(g);g.connect(audioCtx.destination);const n=audioCtx.currentTime;if(type==='tile'){o.type='triangle';o.frequency.setValueAtTime(220,n);o.frequency.exponentialRampToValueAtTime(110,n+.05);g.gain.setValueAtTime(.2,n);g.gain.linearRampToValueAtTime(.01,n+.05);o.start(n);o.stop(n+.05)}else{o.type='sine';o.frequency.setValueAtTime(350,n);o.frequency.exponentialRampToValueAtTime(580,n+.07);g.gain.setValueAtTime(.15,n);g.gain.linearRampToValueAtTime(.01,n+.07);o.start(n);o.stop(n+.07)}}
+  function toggleSound(){soundEnabled=!soundEnabled;$('#sound-icon').textContent=soundEnabled?'🔊':'🔇';$('#sound-text').textContent=soundEnabled?'Ses: AÇIK':'Ses: KAPALI'}
+  $('#soundBtn')?.addEventListener('click',toggleSound);
+
+  // ---------- Game state ----------
+  socket.on('gameUpdate',state=>{game=state;showView('game');syncRack();renderGame()});
+  function mySeat(){const p=room?.players.find(x=>x.id===myId);return p?p.seat:null}
+  function nameOf(id){const p=room?.players.find(x=>x.id===id);return p?p.name:'?'}
+  const colorMap={kirmizi:'red',sari:'yellow',mavi:'blue',siyah:'black'};
+  function displayColor(t){return t?.joker?(game?.okeySpec?.color||'kirmizi'):t?.color}
+  function tileText(t){return t?.joker?'★':String(t?.number??'')}
+  function isOkey(t){return !!(t&&(t.joker||(game?.okeySpec&&t.color===game.okeySpec.color&&t.number===game.okeySpec.number)))}
+  function createTileElement(tile,slotIndex=null){
+    if(!tile)return null;const el=document.createElement('div');el.className='tile '+(colorMap[displayColor(tile)]||'');
+    if(isOkey(tile))el.classList.add('is-okey');el.innerHTML=isOkey(tile)?`<span>${tileText(tile)}</span><span class="star">★</span>`:tileText(tile);
+    if(slotIndex!==null){el.draggable=true;wireRackTile(el,slotIndex)}return el;
   }
+  function createClosedTile(){const e=document.createElement('div');e.className='tile tile-back';return e}
 
-  // ============================================================
-  // TAM EKRAN MANTIĞI
-  // ============================================================
-  function isFullscreen() {
-    return !!(document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement);
+  function syncRack(){
+    if(!game)return;const hand=game.myHand||[];const ids=hand.map(t=>t.id);const old=new Map(rackSlots.filter(Boolean).map(t=>[t.id,t]));
+    const newSlots=new Array(32).fill(null);let used=new Set();
+    // preserve local positions when possible
+    for(let i=0;i<rackSlots.length;i++){const t=rackSlots[i];if(t&&ids.includes(t.id)&&!used.has(t.id)){newSlots[i]=hand.find(x=>x.id===t.id);used.add(t.id)}}
+    let cursor=0;for(const t of hand){if(used.has(t.id))continue;while(cursor<32&&newSlots[cursor])cursor++;if(cursor<32){newSlots[cursor]=t;used.add(t.id)}}
+    rackSlots=newSlots;prevHandIds=ids;
+    if(game.phase==='draw'&&mySeat()===game.turnIndex){selectedSlotIndex=null;draggedIndices=[]}
   }
-
-  function enterFullscreen() {
-    const el = document.documentElement;
-    try {
-      const req = el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen;
-      if (req) {
-        const result = req.call(el);
-        if (result && result.catch) result.catch(() => {});
-      }
-    } catch (_) {}
+  function wireRackTile(el,idx){
+    el.addEventListener('mousedown',e=>{if(!canEditRack())return;isMouseSelecting=true;dragSelectStart=idx;isLongPress=false;clearTimeout(longPressTimer);longPressTimer=setTimeout(()=>{isLongPress=true;draggedIndices=getContiguousBlock(idx);renderRack()},220)});
+    el.addEventListener('mouseenter',()=>{if(isMouseSelecting&&dragSelectStart!==null&&dragSelectStart!==idx){clearTimeout(longPressTimer);selectRangeSlots(dragSelectStart,idx)}});
+    el.addEventListener('mouseup',()=>{clearTimeout(longPressTimer);isMouseSelecting=false});el.addEventListener('mouseleave',()=>clearTimeout(longPressTimer));
+    el.addEventListener('click',e=>{e.stopPropagation();if(draggedIndices.length>1)draggedIndices=[];selectSlot(idx)});
+    el.addEventListener('dblclick',e=>{e.stopPropagation();if(canDiscard())socket.emit('discardTile',rackSlots[idx].id)});
+    el.addEventListener('dragstart',e=>{clearTimeout(longPressTimer);isMouseSelecting=false;if(!canEditRack()){e.preventDefault();return}let sel=getSelectedIndices();draggedIndices=sel.includes(idx)&&sel.length>1?sel:(isLongPress?getContiguousBlock(idx):[idx]);e.dataTransfer.setData('action','move-rack');setCustomDragImage(e,draggedIndices.map(i=>rackSlots[i]));playSound('tile')});
+    el.addEventListener('dragend',()=>{isLongPress=false;isMouseSelecting=false;clearSlotHighlights();renderRack()});
   }
+  function canEditRack(){return !game?.finished&&mySeat()!==null}
+  function canDraw(){return !game?.finished&&mySeat()===game?.turnIndex&&game?.phase==='draw'}
+  function canDiscard(){return !game?.finished&&mySeat()===game?.turnIndex&&game?.phase==='discard'}
+  function getSelectedIndices(){return [...document.querySelectorAll('.rack-slot')].map((s,i)=>s.firstChild?.classList.contains('selected')?i:null).filter(i=>i!==null)}
+  function getContiguousBlock(idx){const rs=idx<16?0:16,re=rs+16;let a=idx,b=idx;while(a>rs&&rackSlots[a-1])a--;while(b<re-1&&rackSlots[b+1])b--;return Array.from({length:b-a+1},(_,i)=>a+i)}
+  function selectRangeSlots(a,b){const rs=a<16?0:16,re=rs+16;draggedIndices=[];for(let i=Math.max(rs,Math.min(a,b));i<=Math.min(re-1,Math.max(a,b));i++)if(rackSlots[i])draggedIndices.push(i);renderRack()}
+  function selectSlot(i){if(!rackSlots[i])return;playSound('tile');draggedIndices=[];if(selectedSlotIndex===null)selectedSlotIndex=i;else if(selectedSlotIndex===i)selectedSlotIndex=null;else{[rackSlots[selectedSlotIndex],rackSlots[i]]=[rackSlots[i],rackSlots[selectedSlotIndex]];selectedSlotIndex=null}renderRack()}
+  function moveTileToExactSlot(src,target){if(!src.length||src.includes(target)&&src.length===1)return;const rs=target<16?0:16,re=rs+16;const moving=src.map(i=>rackSlots[i]);src.forEach(i=>rackSlots[i]=null);if(src.length===1&&rackSlots[target]){[rackSlots[target],rackSlots[src[0]]]=[moving[0],rackSlots[target]];return}let c=target;for(const t of moving){while(c<re&&rackSlots[c])c++;if(c>=re)break;rackSlots[c++]=t}}
+  function clearSlotHighlights(){document.querySelectorAll('.rack-slot.hovered').forEach(x=>x.classList.remove('hovered'))}
+  function highlightTargetSlots(i){clearSlotHighlights();const n=Math.max(1,draggedIndices.length);const end=i<16?16:32;for(let j=0;j<n&&i+j<end;j++)document.querySelectorAll('.rack-slot')[i+j]?.classList.add('hovered')}
 
-  function exitFullscreen() {
-    try {
-      const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-      if (exit) exit.call(document);
-    } catch (_) {}
+  function setCustomDragImage(e,tiles){const box=document.createElement('div');box.style.cssText='position:absolute;left:-9999px;top:-9999px;display:flex;gap:3px';(tiles.length?tiles:[null]).forEach(t=>{const g=t?createTileElement(t):createClosedTile();if(g){g.style.position='relative';box.appendChild(g)}});document.body.appendChild(box);e.dataTransfer?.setDragImage(box,20,28);setTimeout(()=>box.remove(),100)}
+  function renderRack(){const r1=$('#rack-row-1'),r2=$('#rack-row-2');r1.innerHTML='';r2.innerHTML='';for(let i=0;i<32;i++){const s=document.createElement('div');s.className='rack-slot';s.dataset.index=i;s.addEventListener('dragover',e=>{e.preventDefault();highlightTargetSlots(i)});s.addEventListener('dragleave',clearSlotHighlights);s.addEventListener('drop',e=>{e.preventDefault();clearSlotHighlights();const a=e.dataTransfer.getData('action');if(a==='draw-deck'&&canDraw()){socket.emit('drawTile','deck');return}if(a==='draw-discard'&&canDraw()){socket.emit('drawTile','discard');return}if(a==='move-rack'){moveTileToExactSlot(draggedIndices,i);draggedIndices=[];selectedSlotIndex=null;renderRack();playSound('tile')}});s.addEventListener('click',()=>selectSlot(i));if(rackSlots[i]){const t=createTileElement(rackSlots[i],i);if(selectedSlotIndex===i||draggedIndices.includes(i))t.classList.add('selected');s.appendChild(t)}(i<16?r1:r2).appendChild(s)}}
+
+  function animateTileFly(src,dst,tile,done,closed=false){if(!src||!dst){done?.();return}const c=closed?createClosedTile():createTileElement(tile);if(!c){done?.();return}c.style.cssText=`position:fixed;top:${src.top}px;left:${src.left}px;width:${src.width}px;height:${src.height}px;z-index:99999;pointer-events:none;transition:all .32s cubic-bezier(.25,1,.5,1);box-shadow:0 8px 20px rgba(0,0,0,.6)`;document.body.appendChild(c);c.getBoundingClientRect();c.style.top=dst.top+'px';c.style.left=dst.left+'px';setTimeout(()=>{c.remove();done?.()},330)}
+
+  function setupDeckAndDiscard(){
+    const deck=$('#deck-tile'), left=$('#discard-left-spot'), finish=$('#finish-drop-zone'), pspot=$('#discard-player-spot');
+    deck.addEventListener('dragstart',e=>{if(!canDraw()){e.preventDefault();return}e.dataTransfer.setData('action','draw-deck');setCustomDragImage(e,[null]);$('#rack-container').classList.add('drag-active')});
+    deck.addEventListener('click',()=>{if(canDraw())socket.emit('drawTile','deck')});
+    left.addEventListener('click',()=>{if(canDraw()&&game.discardTop)socket.emit('drawTile','discard')});
+    left.addEventListener('dragover',e=>e.preventDefault());
+    pspot.addEventListener('dragover',e=>{e.preventDefault()});pspot.addEventListener('drop',e=>{e.preventDefault();if(canDiscard()&&draggedIndices.length)socket.emit('discardTile',rackSlots[draggedIndices[0]].id)});
+    finish.addEventListener('dragover',e=>{e.preventDefault();if(canDiscard())finish.classList.add('drag-over')});finish.addEventListener('dragleave',()=>finish.classList.remove('drag-over'));finish.addEventListener('drop',e=>{e.preventDefault();finish.classList.remove('drag-over');if(canDiscard()&&draggedIndices.length)socket.emit('declareWin')});
   }
-
-  function updateFullscreenBtn() {
-    const btn = $('#fullscreenBtn');
-    if (!btn) return;
-    btn.textContent = isFullscreen() ? '⤢' : '⛶';
-    btn.title = isFullscreen() ? 'Tam ekrandan çık' : 'Tam ekran';
+  function renderGame(){
+    if(!game||!room)return;const seat=mySeat();
+    $('#deck-count').textContent=game.deckCount;
+    const ind=$('#gosterge-holder');ind.innerHTML='';if(game.indicator)ind.appendChild(createTileElement(game.indicator));
+    const oh=$('#okey-holder');oh.innerHTML='';if(game.okeySpec)oh.appendChild(createTileElement({id:'okey-display',color:game.okeySpec.color,number:game.okeySpec.number,joker:false}));
+    const left=$('#discard-left-spot');left.innerHTML='';left.classList.toggle('takeable',canDraw()&&!!game.discardTop);if(game.discardTop){const t=createTileElement(game.discardTop);left.appendChild(t)}
+    const top=$('#discard-top-spot');top.innerHTML='';const right=$('#discard-right-spot');right.innerHTML='';const mine=$('#discard-player-spot');mine.innerHTML='';
+    if(game.discardTop)mine.appendChild(createTileElement(game.discardTop));
+    const tp=room.players.find(p=>p.seat===game.turnIndex);$('#status-text').textContent=game.finished?(game.winnerId?`🏆 ${nameOf(game.winnerId)} eli bitirdi!`:'El bitti'):(tp?`Sıra: ${tp.name}${game.turnIndex===seat?' (Siz)':''} — ${game.phase==='draw'?'taş çekin':'taş atın'}`:'-');
+    const seatEls={0:$('#seat-bottom'),1:$('#seat-right'),2:$('#seat-top'),3:$('#seat-left')};
+    for(let s=0;s<4;s++){const pid=room.seats[s],p=room.players.find(x=>x.id===pid),el=seatEls[s];if(!el)continue;el.querySelector('.player-name').textContent=p?(p.id===myId?p.name+' (Siz)':p.name):'Boş';el.querySelector('.player-score').innerHTML=`TAŞ: <span>${pid?(s===seat?(game.myHand?.length||0):(game.otherCounts?.[pid]||0)):0}</span>`;el.classList.toggle('active-turn',game.turnIndex===s&&!game.finished)}
+    const zones={1:$('#seat-right'),2:$('#seat-top'),3:$('#seat-left')};Object.values(zones).forEach(z=>z.classList.remove('active-turn'));for(let s=0;s<4;s++){if(s===seat)continue;const rel=(s-seat+4)%4,z=zones[rel];if(!z)continue;z.innerHTML='';const p=room.players.find(x=>x.seat===s);const b=document.createElement('div');b.className='remote-player';b.innerHTML=`<div class="remote-name">${escapeHtml(p?.name||'Boş')}</div><div class="mini-tiles"></div>`;const mt=b.querySelector('.mini-tiles');const n=p?game.otherCounts?.[p.id]||0:0;for(let i=0;i<n;i++)mt.appendChild(createClosedTile());z.appendChild(b);if(game.turnIndex===s&&!game.finished)z.classList.add('active-turn')}
+    const seats=['seat-bottom','seat-right','seat-top','seat-left'];seats.forEach((id,i)=>$('#'+id)?.classList.toggle('active-turn',i===game.turnIndex&&!game.finished));
+    renderRack();startLocalTimer();
   }
+  function startLocalTimer(){clearInterval(turnTimer);if(!game||game.finished)return;document.querySelectorAll('.timer-fill').forEach(x=>x.style.width='100%');const seat=game.turnIndex;const ids=['timer-player','timer-right','timer-top','timer-left'];const bar=$('#'+ids[seat]);if(!bar)return;let w=100;turnTimer=setInterval(()=>{w-=2.5;bar.style.width=Math.max(0,w)+'%';if(w<=0){clearInterval(turnTimer)}},350)}
 
-  $('#fullscreenBtn')?.addEventListener('click', () => {
-    if (isFullscreen()) exitFullscreen(); else enterFullscreen();
-  });
-  ['fullscreenchange', 'webkitfullscreenchange', 'MSFullscreenChange'].forEach(evt =>
-    document.addEventListener(evt, updateFullscreenBtn)
-  );
-
-  // ============================================================
-  // LOBBY
-  // ============================================================
-  function getEnteredName() {
-    const a = $('#nameInputCreate')?.value.trim();
-    const b = $('#nameInputJoin')?.value.trim();
-    return a || b || 'Oyuncu';
+  function setupRack(){
+    $('#sortSeriBtn').addEventListener('click',sortSeri);$('#sortColorBtn').addEventListener('click',sortByColor);$('#sortNumberBtn').addEventListener('click',sortByNumber);$('#discardBtn').addEventListener('click',()=>{if(canDiscard()&&selectedSlotIndex!==null)socket.emit('discardTile',rackSlots[selectedSlotIndex].id)});$('#finishBtn').addEventListener('click',()=>{if(canDiscard())socket.emit('declareWin')});
+    setupDeckAndDiscard();window.addEventListener('mouseup',()=>{isMouseSelecting=false;dragSelectStart=null});
   }
-
-  document.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      document.querySelectorAll('.auth-panel').forEach(p => p.classList.remove('active'));
-      $('#panel-' + btn.dataset.tab).classList.add('active');
-    });
-  });
-
-  $('#quickPlayBtn').addEventListener('click', () => {
-    enterFullscreen();
-    socket.emit('quickPlay', { name: getEnteredName() });
-  });
-
-  $('#createRoomBtn').addEventListener('click', () => {
-    enterFullscreen();
-    const name = $('#nameInputCreate').value.trim() || 'Oyuncu';
-    socket.emit('createRoom', { name });
-  });
-
-  $('#joinRoomBtn').addEventListener('click', () => {
-    const code = $('#codeInput').value.trim().toUpperCase();
-    if (!code) { showToast('Lütfen oda kodunu gir.'); return; }
-    enterFullscreen();
-    const name = $('#nameInputJoin').value.trim() || 'Oyuncu';
-    socket.emit('joinRoom', { code, name });
-  });
-
-  socket.on('connect', () => { myId = socket.id; });
-  socket.on('errorMsg', msg => showToast(msg));
-  socket.on('onlineCount', n => { $('#onlineCount').textContent = n; });
-
-  socket.on('joinedRoom', ({ code, quick }) => {
-    $('#roomCodeLabel').textContent = code;
-    $('#roomCodeLabel2').textContent = code;
-    if (!quick) showView('waiting');
-  });
-
-  $('#copyCodeBtn').addEventListener('click', () => {
-    const code = $('#roomCodeLabel').textContent;
-    navigator.clipboard?.writeText(code).then(() => showToast('Oda kodu kopyalandı: ' + code));
-  });
-
-  $('#leaveWaitingBtn').addEventListener('click', () => location.reload());
-  $('#leaveGameBtn').addEventListener('click', () => location.reload());
-
-  // ============================================================
-  // WAITING / SEATING
-  // ============================================================
-  const seatGrid = $('#seatGrid');
-  for (let i = 0; i < 4; i++) {
-    const btn = document.createElement('button');
-    btn.className = 'seat-btn';
-    btn.dataset.seat = i;
-    btn.innerHTML = `<span class="seat-num">Koltuk ${i + 1}</span><span class="seat-name">Boş</span>`;
-    btn.addEventListener('click', () => socket.emit('chooseSeat', i));
-    seatGrid.appendChild(btn);
-  }
-  $('#spectatorBtn').addEventListener('click', () => socket.emit('chooseSeat', null));
-  $('#startGameBtn').addEventListener('click', () => { enterFullscreen(); socket.emit('startGame'); });
-  $('#newHandBtn').addEventListener('click', () => socket.emit('newHand'));
-
-  socket.on('roomUpdate', state => {
-    room = state;
-    renderWaiting();
-    if (state.gameActive) showView('game');
-  });
-
-  function renderWaiting() {
-    if (!room) return;
-    const isHost = room.hostId === myId;
-    const seatEls = seatGrid.querySelectorAll('.seat-btn');
-    seatEls.forEach((btn, i) => {
-      const occupantId = room.seats[i];
-      const occupant = room.players.find(p => p.id === occupantId);
-      btn.classList.toggle('occupied', !!occupant);
-      btn.classList.toggle('mine', occupantId === myId);
-      btn.querySelector('.seat-name').textContent = occupant ? occupant.name : 'Boş';
-    });
-
-    const list = $('#playersList');
-    list.innerHTML = '';
-    room.players.forEach(p => {
-      const div = document.createElement('div');
-      div.className = 'player-chip' + (p.id === room.hostId ? ' host' : '');
-      const spot = p.seat !== null ? `Koltuk ${p.seat + 1}` : 'İzleyici';
-      div.innerHTML = `<span>${escapeHtml(p.name)}</span><span class="spot">— ${spot}</span>`;
-      list.appendChild(div);
-    });
-
-    const filledSeats = room.seats.filter(Boolean).length;
-    $('#startGameBtn').hidden = !isHost;
-    $('#startGameBtn').disabled = filledSeats !== 4;
-    $('#startHint').textContent = isHost
-      ? (filledSeats === 4 ? 'Herkes hazır — oyunu başlatabilirsin.' : `Oyun başlamadan önce 4 koltuğun dolu olması gerekiyor (${filledSeats}/4).`)
-      : 'Oda kurucusunun oyunu başlatmasını bekleyin.';
-  }
-
-  // ============================================================
-  // GAME MEKANİKLERİ VE SOKET ENTEGRASYONU
-  // ============================================================
- socket.on('gameUpdate', state => {
-    const prevTurn = game?.turnIndex;
-    const prevPhase = game?.phase;
-    game = state;
-
-    if (game) {
-      showView('game');
-      
-      // 1. Taşları sunucudan gelen el verisine göre senkronize et
-      syncHandToRack(game.myHand || []);
-
-      // 2. Sıra değiştiyse zamanlayıcıyı sıfırla
-      if (prevTurn !== game.turnIndex || prevPhase !== game.phase) {
-        resetTimer();
-      }
-
-      // 3. Masayı VE ıstakayı ekrana çiz
-      renderGame();
-      renderRackAnimated(); // <-- TAŞLARIN EKRANA GELMESİNİ SAĞLAYAN KRİTİK ÇAĞRI
-    }
-  });
-
-  function mySeat() {
-    if (!room) return null;
-    const me = room.players.find(p => p.id === myId);
-    return me ? me.seat : null;
-  }
-
-  function tileLabel(tile) {
-    if (!tile) return '';
-    if (tile.joker) return '★';
-    return String(tile.number);
-  }
-
-  // Sunucudan gelen el verisi ile yerel rackData dizisini eşleştir
-  function syncHandToRack(serverHand) {
-    const currentRackTiles = rackData.filter(t => t !== null);
-    const serverHandIds = new Set(serverHand.map(t => t.id));
-
-    // Sunucuda kalmayan taşları yerel ıstakadan temizle
-    for (let i = 0; i < RACK_SIZE; i++) {
-      if (rackData[i] && !serverHandIds.has(rackData[i].id)) {
-        rackData[i] = null;
-      }
-    }
-
-    // Yeni gelen taşları en yakın boş slotlara yerleştir
-    serverHand.forEach(tile => {
-      const exists = rackData.some(t => t && t.id === tile.id);
-      if (!exists) {
-        const emptySlotIndex = rackData.indexOf(null);
-        if (emptySlotIndex !== -1) {
-          rackData[emptySlotIndex] = tile;
-        }
-      }
-    });
-  }
-
-  // ============================================================
-  // SİSTEM 1: GELİŞMİŞ TAŞ ELEMANI & SÜRÜKLE BIRAK MANTIĞI
-  // ============================================================
-  function createTileElement(tile, index) {
-    const el = document.createElement('div');
-    el.className = 'tile tile-classic';
-    el.dataset.tid = tile.id;
-    el.dataset.index = index;
-    el.draggable = true;
-
-    if (tile.joker) {
-      el.classList.add('is-joker');
-    } else {
-      el.classList.add('color-' + tile.color);
-    }
-
-    if (game && game.okeySpec && !tile.joker && tile.color === game.okeySpec.color && tile.number === game.okeySpec.number) {
-      el.classList.add('is-okey');
-    }
-
-    el.textContent = tileLabel(tile);
-
-    if (tile.id === selectedTileId) {
-      el.classList.add('selected');
-    }
-
-    // Sürükleme Etkinlikleri
-    el.addEventListener('dragstart', (e) => {
-      draggedTileIndex = index;
-      setTimeout(() => el.classList.add('dragging'), 0);
-      e.dataTransfer.effectAllowed = 'move';
-    });
-
-    el.addEventListener('dragend', () => {
-      el.classList.remove('dragging');
-      draggedTileIndex = null;
-    });
-
-    // Tıklama Etkinliği (Çift tıklama / Seçip atma)
-    el.addEventListener('click', () => onTileClick(tile));
-
-    return el;
-  }
-
-  function handleDragOver(e) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-  }
-
-  // ============================================================
-  // SİSTEM 2: TAŞ BIRAKMA VE ISTAKADA KAYDIRMA (SHIFTING)
-  // ============================================================
-  function handleDrop(e) {
-    e.preventDefault();
-    const targetSlot = e.target.closest('.slot');
-    if (!targetSlot) return;
-
-    const targetIndex = parseInt(targetSlot.dataset.index);
-    if (draggedTileIndex === null || draggedTileIndex === targetIndex) return;
-
-    const tileToMove = rackData[draggedTileIndex];
-
-    // Hedef slot doluysa en yakın boş yere kaydır
-    if (rackData[targetIndex] !== null) {
-      let emptyIndex = findNearestEmptySlot(targetIndex);
-      if (emptyIndex !== -1) {
-        rackData[emptyIndex] = rackData[targetIndex];
-      }
-    }
-
-    rackData[targetIndex] = tileToMove;
-    rackData[draggedTileIndex] = null;
-
-    renderRackAnimated();
-  }
-
-  function findNearestEmptySlot(startIndex) {
-    for (let i = 1; i < RACK_SIZE; i++) {
-      if (startIndex + i < RACK_SIZE && rackData[startIndex + i] === null) return startIndex + i;
-      if (startIndex - i >= 0 && rackData[startIndex - i] === null) return startIndex - i;
-    }
-    return -1;
-  }
-
-  // ============================================================
-  // SİSTEM 4: KLONLAMA İLE "UÇAN TAŞ" ANİMASYONLU TAŞ ÇEKME
-  // ============================================================
-  function drawTileAnimated(type) {
-    const seat = mySeat();
-    if (seat === null || game.turnIndex !== seat || game.phase !== 'draw') {
-      showToast('Sıra sende değil ya da zaten taş çektin.');
-      return;
-    }
-
-    const emptySlotIndex = rackData.indexOf(null);
-    if (emptySlotIndex === -1) {
-      showToast('Istakanızda boş slot kalmadı.');
-      return;
-    }
-
-    const srcArea = type === 'deck' ? $('#deckPile') : $('#discardPile');
-    const targetSlotEl = document.querySelector(`.slot[data-index="${emptySlotIndex}"]`);
-
-    if (srcArea && targetSlotEl) {
-      const srcRect = srcArea.getBoundingClientRect();
-      const dstRect = targetSlotEl.getBoundingClientRect();
-
-      const flyingTile = document.createElement('div');
-      flyingTile.className = 'tile tile-classic flying-tile';
-      flyingTile.textContent = type === 'discard' && game.discardTop ? tileLabel(game.discardTop) : '🂠';
-      if (type === 'discard' && game.discardTop) {
-        flyingTile.classList.add(game.discardTop.joker ? 'is-joker' : 'color-' + game.discardTop.color);
-      } else {
-        flyingTile.classList.add('tile-back');
-      }
-
-      flyingTile.style.left = srcRect.left + 'px';
-      flyingTile.style.top = srcRect.top + 'px';
-      document.body.appendChild(flyingTile);
-
-      requestAnimationFrame(() => {
-        flyingTile.style.left = dstRect.left + 'px';
-        flyingTile.style.top = dstRect.top + 'px';
-      });
-
-      setTimeout(() => {
-        if (flyingTile.parentNode) document.body.removeChild(flyingTile);
-        socket.emit('drawTile', type);
-      }, 350);
-    } else {
-      socket.emit('drawTile', type);
-    }
-  }
-
-  // Event Listeners for Drawing Tiles
-  $('#deckPile').addEventListener('click', () => { pulse($('#deckPile')); drawTileAnimated('deck'); });
-  $('#discardPile').addEventListener('click', () => { pulse($('#discardPile')); drawTileAnimated('discard'); });
-  $('#drawDeckBtn').addEventListener('click', () => drawTileAnimated('deck'));
-  $('#drawDiscardBtn').addEventListener('click', () => drawTileAnimated('discard'));
-
-  function onTileClick(tile) {
-    if (!game || game.finished) return;
-    const seat = mySeat();
-    if (seat === null || game.turnIndex !== seat || game.phase !== 'discard') {
-      showToast('Önce taş çekmen gerekiyor / sıra sende değil.');
-      return;
-    }
-    if (selectedTileId === tile.id) {
-      socket.emit('discardTile', tile.id);
-      selectedTileId = null;
-    } else {
-      selectedTileId = tile.id;
-      renderRackAnimated();
-    }
-  }
-
-  $('#declareWinBtn').addEventListener('click', () => socket.emit('declareWin'));
-  $('#manualWinBtn').addEventListener('click', () => socket.emit('claimManualWin'));
-  $('#smartSortBtn').addEventListener('click', smartSort);
-
-  function pulse(el) {
-    el.style.transform = 'scale(0.9)';
-    setTimeout(() => { el.style.transform = ''; }, 140);
-  }
-
-  // ============================================================
-  // SİSTEM 3: DİNAMİK SÜRE VE ZAMANLAYICI MANTIĞI
-  // ============================================================
-  function startTurnTimer() {
-    const bar = $('#timerBar');
-    if (!bar) return;
-
-    clearInterval(timerInterval);
-    timeRemaining = 100;
-    const isMyTurn = game && mySeat() === game.turnIndex && !game.finished;
-
-    timerInterval = setInterval(() => {
-      timeRemaining -= 1.5;
-      bar.style.width = Math.max(0, timeRemaining) + '%';
-
-      if (timeRemaining < 30) {
-        bar.style.backgroundColor = '#e84118';
-      } else {
-        bar.style.backgroundColor = '#4cd137';
-      }
-
-      if (timeRemaining <= 0) {
-        clearInterval(timerInterval);
-        if (isMyTurn) {
-          showToast('Süreniz doldu!');
-          if (game.phase === 'draw') {
-            socket.emit('drawTile', 'deck');
-          }
-        }
-      }
-    }, 350);
-  }
-
-  function resetTimer() {
-    const bar = $('#timerBar');
-    if (bar) bar.style.backgroundColor = '#4cd137';
-    startTurnTimer();
-  }
-
-  // ============================================================
-  // SİSTEM 5: AKILLI DİZME ALGORİTMASI (RENK VE SAYI SIRALAMA)
-  // ============================================================
-  function smartSort() {
-    let activeTiles = rackData.filter(t => t !== null);
-
-    activeTiles.sort((a, b) => {
-      if (a.joker && b.joker) return 0;
-      if (a.joker) return 1;
-      if (b.joker) return -1;
-
-      if (a.color === b.color) {
-        return a.number - b.number;
-      }
-      return a.color.localeCompare(b.color);
-    });
-
-    rackData.fill(null);
-    activeTiles.forEach((tile, index) => {
-      rackData[index] = tile;
-    });
-
-    renderRackAnimated();
-    showToast('Taşlar akıllı olarak sıralandı.');
-  }
-
-  // ============================================================
-  // MASAYI RENDER ETME
-  // ============================================================
-  function renderGame() {
-    if (!game || !room) return;
-    const seat = mySeat();
-
-    // Gösterge
-    const indicatorHost = $('#indicatorTile');
-    indicatorHost.className = 'tile';
-    if (game.indicator.joker) indicatorHost.classList.add('is-joker');
-    else indicatorHost.classList.add('color-' + game.indicator.color);
-    indicatorHost.textContent = tileLabel(game.indicator);
-
-    if (!indicatorRevealed) {
-      indicatorHost.classList.add('indicator-reveal');
-      indicatorRevealed = true;
-    }
-    $('#okeySpecLabel').textContent = game.okeySpec
-      ? `${colorNameTr(game.okeySpec.color)} ${game.okeySpec.number}`
-      : '-';
-
-    $('#deckCount').textContent = game.deckCount;
-
-    // Orta Atılan Taş
-    const discardHost = $('#discardTopTile');
-    discardHost.className = 'tile';
-    if (game.discardTop) {
-      if (game.discardTop.joker) discardHost.classList.add('is-joker');
-      else discardHost.classList.add('color-' + game.discardTop.color);
-      discardHost.textContent = tileLabel(game.discardTop);
-      if (game.discardTop.id !== prevDiscardTopId) {
-        discardHost.classList.add('tile-pop');
-      }
-      prevDiscardTopId = game.discardTop.id;
-    } else {
-      discardHost.classList.add('tile-empty');
-      prevDiscardTopId = null;
-    }
-
-    const turnPlayer = room.players.find(p => p.seat === game.turnIndex);
-    $('#turnBanner').textContent = game.finished
-      ? (game.winnerId ? `🏆 ${nameOf(game.winnerId)} eli bitirdi!` : 'El bitti')
-      : (turnPlayer ? `Sıra: ${turnPlayer.name}${game.turnIndex === seat ? ' (Sen)' : ''} — ${game.phase === 'draw' ? 'taş çeksin' : 'taş atsın'}` : '-');
-
-    $('#newHandBtn').hidden = !(game.finished && room.hostId === myId);
-
-    renderRackAnimated();
-    renderRemoteSeats(seat);
-  }
-
-  // Slot Tabanlı 22 Slotlu Istakayı Çiz
-  function renderRackAnimated() {
-    const rowTop = $('#rackRowTop');
-    const rowBottom = $('#rackRowBottom');
-    if (!rowTop || !rowBottom) return;
-
-    rowTop.innerHTML = '';
-    rowBottom.innerHTML = '';
-
-    for (let i = 0; i < RACK_SIZE; i++) {
-      const slot = document.createElement('div');
-      slot.className = 'slot';
-      slot.dataset.index = i;
-
-      slot.addEventListener('dragover', handleDragOver);
-      slot.addEventListener('drop', handleDrop);
-
-      const tile = rackData[i];
-      if (tile) {
-        const tileEl = createTileElement(tile, i);
-        slot.appendChild(tileEl);
-      }
-
-      if (i < 11) {
-        rowTop.appendChild(slot);
-      } else {
-        rowBottom.appendChild(slot);
-      }
-    }
-  }
-
-  function nameOf(id) {
-    const p = room.players.find(x => x.id === id);
-    return p ? p.name : '?';
-  }
-
-  function colorNameTr(c) {
-    return { kirmizi: 'Kırmızı', sari: 'Sarı', mavi: 'Mavi', siyah: 'Siyah' }[c] || c;
-  }
-
-  function renderRemoteSeats(mySeatIdx) {
-    const zones = { 1: $('#seatRight'), 2: $('#seatTop'), 3: $('#seatLeft') };
-    Object.values(zones).forEach(z => (z.innerHTML = ''));
-    if (mySeatIdx === null) return;
-
-    for (let s = 0; s < 4; s++) {
-      if (s === mySeatIdx) continue;
-      const rel = (s - mySeatIdx + 4) % 4; // 1=right, 2=top, 3=left
-      const zone = zones[rel];
-      if (!zone) continue;
-      const occupantId = room.seats[s];
-      const occupant = room.players.find(p => p.id === occupantId);
-      const wrap = document.createElement('div');
-      wrap.className = 'seat-remote-inner';
-      const nameEl = document.createElement('div');
-      nameEl.className = 'rname';
-      nameEl.textContent = occupant ? occupant.name : 'Boş koltuk';
-      if (occupant && occupant.bot) {
-        const tag = document.createElement('span');
-        tag.className = 'bot-tag';
-        tag.textContent = '🤖';
-        nameEl.appendChild(tag);
-      }
-      const tilesEl = document.createElement('div');
-      tilesEl.className = 'mini-tiles';
-      const count = occupantId ? (game.otherCounts?.[occupantId] || 0) : 0;
-      for (let i = 0; i < count; i++) tilesEl.appendChild(createMiniTileBack());
-      wrap.appendChild(nameEl);
-      wrap.appendChild(tilesEl);
-      zone.appendChild(wrap);
-      zone.classList.toggle('active', game.turnIndex === s && !game.finished);
-    }
-  }
-
-  function createMiniTileBack() {
-    const el = document.createElement('div');
-    el.className = 'tile tile-back';
-    return el;
-  }
-
-  // ============================================================
-  // CHAT
-  // ============================================================
-  const chatPanel = $('#chatPanel');
-  const chatMessages = $('#chatMessages');
-  function toggleChat() { chatPanel.hidden = !chatPanel.hidden; }
-  $('#chatToggleBtn')?.addEventListener('click', toggleChat);
-  $('#chatToggleBtn2')?.addEventListener('click', toggleChat);
-  $('#chatCloseBtn')?.addEventListener('click', toggleChat);
-
-  $('#chatForm')?.addEventListener('submit', e => {
-    e.preventDefault();
-    const input = $('#chatInput');
-    const text = input.value.trim();
-    if (!text) return;
-    socket.emit('chatMsg', text);
-    input.value = '';
-  });
-
-  socket.on('chatMsg', msg => {
-    const div = document.createElement('div');
-    if (msg.system) {
-      div.className = 'chat-msg system';
-      div.textContent = msg.text;
-    } else {
-      div.className = 'chat-msg';
-      div.innerHTML = `<span class="who">${escapeHtml(msg.name)}:</span>${escapeHtml(msg.text)}`;
-    }
-    chatMessages.appendChild(div);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-  });
-
-  // ============================================================
-  // MANUAL WIN CLAIM DIALOG
-  // ============================================================
-  const manualDialog = $('#manualWinDialog');
-  socket.on('manualWinClaim', ({ claimantId, claimantName, hand }) => {
-    $('#manualWinTitle').textContent = `${claimantName} elini açtı`;
-    const tilesWrap = $('#manualWinTiles');
-    tilesWrap.innerHTML = '';
-    hand.slice().sort((a,b) => a.number - b.number).forEach(t => {
-      const el = document.createElement('div');
-      el.className = 'tile tile-classic ' + (t.joker ? 'is-joker' : 'color-' + t.color);
-      el.textContent = tileLabel(t);
-      tilesWrap.appendChild(el);
-    });
-
-    const actions = $('#manualWinActions');
-    actions.innerHTML = '';
-    if (room.hostId === myId && claimantId !== myId) {
-      const accept = document.createElement('button');
-      accept.className = 'btn btn-small btn-gold';
-      accept.textContent = 'Kabul Et (Bitti)';
-      accept.addEventListener('click', () => { socket.emit('resolveManualWin', { claimantId, accepted: true }); manualDialog.hidden = true; });
-      const reject = document.createElement('button');
-      reject.className = 'btn btn-small btn-ghost';
-      reject.textContent = 'Reddet';
-      reject.addEventListener('click', () => { socket.emit('resolveManualWin', { claimantId, accepted: false }); manualDialog.hidden = true; });
-      actions.append(accept, reject);
-    } else {
-      const closeBtn = document.createElement('button');
-      closeBtn.className = 'btn btn-small btn-ghost';
-      closeBtn.textContent = 'Kapat';
-      closeBtn.addEventListener('click', () => { manualDialog.hidden = true; });
-      actions.append(closeBtn);
-      showToast(room.hostId === myId ? 'Kendi elini onaylayamazsın.' : 'Masa (oda kurucusu) bu iddiayı değerlendiriyor...');
-    }
-    manualDialog.hidden = false;
-  });
-
-  // ============================================================
-  // VOICE CHAT (WebRTC)
-  // ============================================================
-  $('#voiceToggleWaiting')?.addEventListener('click', toggleVoice);
-  $('#voiceToggleGame')?.addEventListener('click', toggleVoice);
-
-  async function toggleVoice() {
-    if (voiceOn) {
-      stopVoice();
-    } else {
-      await startVoice();
-    }
-  }
-
-  async function startVoice() {
-    try {
-      localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    } catch (err) {
-      showToast('Mikrofon erişimi reddedildi ya da bulunamadı.');
-      return;
-    }
-    voiceOn = true;
-    setVoiceButtonsState(true);
-    socket.emit('voiceJoin');
-  }
-
-  function stopVoice() {
-    if (!voiceOn && !localStream) return;
-    voiceOn = false;
-    setVoiceButtonsState(false);
-    socket.emit('voiceLeave');
-    localStream?.getTracks().forEach(t => t.stop());
-    localStream = null;
-    Object.keys(peerConnections).forEach(closePeer);
-  }
-
-  function setVoiceButtonsState(on) {
-    ['#voiceToggleWaiting', '#voiceToggleGame'].forEach(sel => {
-      const btn = $(sel);
-      if (btn) {
-        btn.classList.toggle('active', on);
-        btn.textContent = on ? '🔊 Ses Açık' : '🎤 Sesi Aç';
-      }
-    });
-  }
-
-  function closePeer(peerId) {
-    peerConnections[peerId]?.close();
-    delete peerConnections[peerId];
-    const audioEl = audioEls[peerId];
-    if (audioEl) { audioEl.remove(); delete audioEls[peerId]; }
-  }
-
-  function ensurePeer(peerId, isInitiator) {
-    if (peerConnections[peerId]) return peerConnections[peerId];
-    const pc = new RTCPeerConnection(rtcConfig);
-    peerConnections[peerId] = pc;
-
-    if (localStream) {
-      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
-    }
-
-    pc.onicecandidate = e => {
-      if (e.candidate) socket.emit('voiceSignal', { to: peerId, signal: { type: 'ice', candidate: e.candidate } });
-    };
-    pc.ontrack = e => {
-      let audioEl = audioEls[peerId];
-      if (!audioEl) {
-        audioEl = document.createElement('audio');
-        audioEl.autoplay = true;
-        audioEl.dataset.peer = peerId;
-        document.body.appendChild(audioEl);
-        audioEls[peerId] = audioEl;
-      }
-      audioEl.srcObject = e.streams[0];
-    };
-
-    if (isInitiator) {
-      pc.onnegotiationneeded = async () => {
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        socket.emit('voiceSignal', { to: peerId, signal: { type: 'offer', sdp: pc.localDescription } });
-      };
-    }
-    return pc;
-  }
-
-  socket.on('voicePeerJoined', peerId => {
-    if (!voiceOn) return;
-    ensurePeer(peerId, true);
-  });
-
-  socket.on('voicePeerLeft', peerId => {
-    closePeer(peerId);
-  });
-
-  socket.on('voiceSignal', async ({ from, signal }) => {
-    if (!voiceOn) return;
-    const pc = ensurePeer(from, false);
-    if (signal.type === 'offer') {
-      await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      socket.emit('voiceSignal', { to: from, signal: { type: 'answer', sdp: pc.localDescription } });
-    } else if (signal.type === 'answer') {
-      await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
-    } else if (signal.type === 'ice') {
-      try { await pc.addIceCandidate(signal.candidate); } catch (_) {}
-    }
-  });
-
-  // Mobil Dokunma ve Zoom Engelleme
-  document.addEventListener('touchmove', e => {
-    if (e.touches.length > 1) { e.preventDefault(); }
-  }, { passive: false });
-  document.addEventListener('gesturestart', e => e.preventDefault());
-
-  function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  showView('lobby');
+  function sortByColor(){const a=rackSlots.filter(Boolean).sort((x,y)=>{const cx=displayColor(x),cy=displayColor(y);return cx===cy?(x.number||99)-(y.number||99):String(cx).localeCompare(String(cy))});rackSlots=new Array(32).fill(null);a.forEach((t,i)=>rackSlots[i]=t);selectedSlotIndex=null;draggedIndices=[];renderRack();playSound('tile')}
+  function sortByNumber(){const a=rackSlots.filter(Boolean).sort((x,y)=>(x.number||99)-(y.number||99)||String(displayColor(x)).localeCompare(String(displayColor(y))));rackSlots=new Array(32).fill(null);a.forEach((t,i)=>rackSlots[i]=t);selectedSlotIndex=null;draggedIndices=[];renderRack();playSound('tile')}
+  function sortSeri(){sortByColor();showToast('Taşlar renk ve sayıya göre dizildi. Daha gelişmiş per dizilimi server tarafına taşınabilir.')}
+
+  // ---------- Chat ----------
+  const chatPanel=$('#chatPanel'),chatMessages=$('#chatMessages');
+  function toggleChat(){chatPanel.hidden=!chatPanel.hidden}
+  $('#chatToggleBtn')?.addEventListener('click',toggleChat);$('#chatToggleBtn2')?.addEventListener('click',toggleChat);$('#chatCloseBtn')?.addEventListener('click',toggleChat);
+  $('#chatForm')?.addEventListener('submit',e=>{e.preventDefault();const i=$('#chatInput'),t=i.value.trim();if(t)socket.emit('chatMsg',t);i.value=''})
+  socket.on('chatMsg',m=>{const d=document.createElement('div');d.className='chat-msg'+(m.system?' system':'');d.innerHTML=m.system?escapeHtml(m.text):`<span class="who">${escapeHtml(m.name)}:</span>${escapeHtml(m.text)}`;chatMessages.appendChild(d);chatMessages.scrollTop=chatMessages.scrollHeight});
+
+  // ---------- Manual win ----------
+  const manualDialog=$('#manualWinDialog');
+  $('#manualWinBtn')?.addEventListener('click',()=>socket.emit('claimManualWin'));
+  socket.on('manualWinClaim',({claimantId,claimantName,hand})=>{if(!manualDialog)return;$('#manualWinTitle').textContent=`${claimantName} elini açtı`;const w=$('#manualWinTiles');w.innerHTML='';hand.forEach(t=>w.appendChild(createTileElement(t)));const a=$('#manualWinActions');a.innerHTML='';if(room.hostId===myId&&claimantId!==myId){for(const [txt,ok] of [['Kabul Et (Bitti)',true],['Reddet',false]]){const b=document.createElement('button');b.className='btn btn-small '+(ok?'btn-gold':'btn-ghost');b.textContent=txt;b.onclick=()=>{socket.emit('resolveManualWin',{claimantId,accepted:ok});manualDialog.hidden=true};a.appendChild(b)}}else{const b=document.createElement('button');b.className='btn btn-small btn-ghost';b.textContent='Kapat';b.onclick=()=>manualDialog.hidden=true;a.appendChild(b)}manualDialog.hidden=false});
+
+  // ---------- Voice ----------
+  $('#voiceToggleWaiting')?.addEventListener('click',toggleVoice);$('#voiceToggleGame')?.addEventListener('click',toggleVoice);
+  async function toggleVoice(){voiceOn?stopVoice():await startVoice()}
+  async function startVoice(){try{localStream=await navigator.mediaDevices.getUserMedia({audio:true,video:false})}catch{showToast('Mikrofon erişimi reddedildi ya da bulunamadı.');return}voiceOn=true;setVoiceButtons(true);socket.emit('voiceJoin')}
+  function stopVoice(){voiceOn=false;setVoiceButtons(false);socket.emit('voiceLeave');localStream?.getTracks().forEach(t=>t.stop());localStream=null;Object.keys(peerConnections).forEach(closePeer)}
+  function setVoiceButtons(on){['#voiceToggleWaiting','#voiceToggleGame'].forEach(s=>{const b=$(s);if(b){b.classList.toggle('active',on);b.textContent=on?'🔊 Ses Açık':'🎤 Sesi Aç'}})}
+  function closePeer(id){peerConnections[id]?.close();delete peerConnections[id];audioEls[id]?.remove();delete audioEls[id]}
+  function ensurePeer(id,init){if(peerConnections[id])return peerConnections[id];const pc=new RTCPeerConnection(rtcConfig);peerConnections[id]=pc;localStream?.getTracks().forEach(t=>pc.addTrack(t,localStream));pc.onicecandidate=e=>e.candidate&&socket.emit('voiceSignal',{to:id,signal:{type:'ice',candidate:e.candidate}});pc.ontrack=e=>{let a=audioEls[id];if(!a){a=document.createElement('audio');a.autoplay=true;document.body.appendChild(a);audioEls[id]=a}a.srcObject=e.streams[0]};if(init)pc.onnegotiationneeded=async()=>{const o=await pc.createOffer();await pc.setLocalDescription(o);socket.emit('voiceSignal',{to:id,signal:{type:'offer',sdp:pc.localDescription}})};return pc}
+  socket.on('voicePeerJoined',id=>{if(voiceOn)ensurePeer(id,true)});socket.on('voicePeerLeft',closePeer);socket.on('voiceSignal',async({from,signal})=>{if(!voiceOn)return;const pc=ensurePeer(from,false);if(signal.type==='offer'){await pc.setRemoteDescription(signal.sdp);const a=await pc.createAnswer();await pc.setLocalDescription(a);socket.emit('voiceSignal',{to:from,signal:{type:'answer',sdp:pc.localDescription}})}else if(signal.type==='answer'){await pc.setRemoteDescription(signal.sdp)}else if(signal.type==='ice'){try{await pc.addIceCandidate(signal.candidate)}catch{}}});
+
+  // ---------- Touch / init ----------
+  document.addEventListener('touchmove',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});
+  setupRack();showView('lobby');
 })();
