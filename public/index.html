@@ -6,10 +6,10 @@
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="theme-color" content="#050a07" />
-<title>Okey Masası VIP — Klasik Okey, Arkadaşlarla & Botlara Karşı</title>
+<meta name="theme-color" content="#0a3a2a" />
+<title>Okey Masası — Klasik & Pro Okey Mekanikleri</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
@@ -19,7 +19,7 @@
 <!-- ===================== ÜST ÇUBUK ===================== -->
 <header id="topBar" class="top-bar">
   <div class="top-bar-left">
-    <span class="brand">Okey<span class="brand-accent">Masası</span></span>
+    <span class="brand">Okey<span class="brand-accent">Masası Pro</span></span>
   </div>
   <div class="top-bar-center">
     <span class="online-pill"><span class="dot"></span><span id="onlineCount">0</span> çevrimiçi</span>
@@ -29,14 +29,14 @@
   </div>
 </header>
 
-<!-- ===================== YAN REKLAM SÜTUNLARI (Rummikub tarzı) ===================== -->
+<!-- ===================== YAN REKLAM SÜTUNLARI ===================== -->
 <aside class="ad-side ad-side-left" aria-hidden="true"><div class="ad-side-inner"><span>REKLAM</span></div></aside>
 <aside class="ad-side ad-side-right" aria-hidden="true"><div class="ad-side-inner"><span>REKLAM</span></div></aside>
 
 <!-- ===================== ALT REKLAM BANNER ===================== -->
 <div class="ad-bottom" aria-hidden="true"><span>REKLAM ALANI</span></div>
 
-<!-- ===================== OYUN SAHNESİ (üst/alt/yan çubuklar arasında sabit) ===================== -->
+<!-- ===================== OYUN SAHNESİ ===================== -->
 <div id="stage">
 
   <!-- ===================== LOBBY ===================== -->
@@ -103,8 +103,13 @@
     </div>
   </section>
 
-  <!-- ===================== GAME TABLE (klasik okey) ===================== -->
+  <!-- ===================== GAME TABLE (PRO OKEY) ===================== -->
   <section id="view-game" class="view view-game" hidden>
+    <!-- SÜRE ÇUBUĞU (TIMER) -->
+    <div class="timer-container">
+      <div class="timer-bar" id="timerBar"></div>
+    </div>
+
     <header class="table-header">
       <div class="room-code-badge">Oda: <strong id="roomCodeLabel2">-----</strong></div>
       <div id="turnBanner" class="turn-banner">-</div>
@@ -142,12 +147,13 @@
       <div class="action-bar">
         <button id="drawDeckBtn" class="btn btn-small">Kupadan Çek</button>
         <button id="drawDiscardBtn" class="btn btn-small">Ortadan Çek</button>
+        <button id="smartSortBtn" class="btn btn-small btn-secondary">Akıllı Diz 🧩</button>
         <button id="declareWinBtn" class="btn btn-small btn-gold">Elimi Bitirdim</button>
         <button id="manualWinBtn" class="btn btn-small btn-ghost">Elimi Açıyorum</button>
         <button id="newHandBtn" class="btn btn-small btn-ghost" hidden>Yeni El</button>
       </div>
 
-      <!-- Klasik okey: iki katlı ahşap taşlık -->
+      <!-- 22 Slotlu Çift Sıralı Ahşap Istaka -->
       <div class="rack-holder" id="rackHolder">
         <div class="rack-row" id="rackRowTop"></div>
         <div class="rack-row" id="rackRowBottom"></div>
@@ -157,7 +163,7 @@
 
 </div>
 
-<!-- ===================== CHAT PANEL (paylaşılan) ===================== -->
+<!-- ===================== CHAT PANEL ===================== -->
 <aside id="chatPanel" class="chat-panel" hidden>
   <div class="chat-header">
     <span>Sohbet</span>
