@@ -74,6 +74,7 @@ function personalGameView(room, id) {
     phase: g.phase,
     finished: g.finished,
     winnerId: g.winnerId,
+    discardsBySeat: g.discardBySeat || [null, null, null, null],
     myHand: g.hands[id] || [],
     otherCounts,
     seatOfPlayer
@@ -103,6 +104,10 @@ function doDraw(room, pid, source) {
   let tile;
   if (actualSource === 'discard') {
     tile = g.discardPile.pop();
+    if (tile && Array.isArray(g.discardBySeat)) {
+      const ownerSeat = g.discardBySeat.findIndex(t => t && t.id === tile.id);
+      if (ownerSeat !== -1) g.discardBySeat[ownerSeat] = null;
+    }
   } else {
     if (g.deck.length === 0) return false;
     tile = g.deck.pop();
@@ -122,6 +127,10 @@ function doDiscard(room, pid, tileId) {
   if (idx === -1) idx = Math.floor(Math.random() * hand.length);
   const [tile] = hand.splice(idx, 1);
   g.discardPile.push(tile);
+  const seat = room.players[pid]?.seat;
+  if (Array.isArray(g.discardBySeat) && seat !== null && seat !== undefined) {
+    g.discardBySeat[seat] = tile;
+  }
   g.turnIndex = (g.turnIndex + 1) % 4;
   g.phase = 'draw';
   broadcastGame(room);
