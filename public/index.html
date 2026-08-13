@@ -1,179 +1,132 @@
 <!DOCTYPE html>
+
 <html lang="tr">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover" />
-<meta name="mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="theme-color" content="#0a3a2a" />
-<title>Okey Masası — Klasik Okey, Arkadaşlarla & Botlara Karşı</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css" />
-</head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Düz Okey VIP - Pro Edition</title>
+
+<script src="/socket.io/socket.io.js"></script></head>
 <body>
 
-<div id="toast" class="toast" hidden></div>
-
-<!-- ===================== ÜST ÇUBUK ===================== -->
-<header id="topBar" class="top-bar">
-  <div class="top-bar-left">
-    <span class="brand">Okey<span class="brand-accent">Masası</span></span>
-  </div>
-  <div class="top-bar-center">
-    <span class="online-pill"><span class="dot"></span><span id="onlineCount">0</span> çevrimiçi</span>
-  </div>
-  <div class="top-bar-right">
-    <button id="fullscreenBtn" class="mini-btn" title="Tam ekran">⛶</button>
-  </div>
+<div class="online-overlay" id="online-lobby">
+<div class="online-card">
+<div class="online-title">DÜZ OKEY VIP</div>
+<div class="online-subtitle">Arkadaşlarınla aynı masada oyna</div>
+<div class="online-tabs">
+<button class="online-tab active" id="createTab">ODA KUR</button>
+<button class="online-tab" id="joinTab">ODAYA KATIL</button>
+</div>
+<div class="online-panel" id="createPanel">
+<label>Adın</label><input autocomplete="off" id="nameCreate" maxlength="20" placeholder="Oyuncu"/>
+<button class="online-btn primary" id="createRoom">YENİ ODA AÇ</button>
+<button class="online-btn secondary" id="quickPlay">HIZLI OYUN (BOTLAR)</button>
+</div>
+<div class="online-panel" hidden="" id="joinPanel">
+<label>Adın</label><input autocomplete="off" id="nameJoin" maxlength="20" placeholder="Oyuncu"/>
+<label>Oda Kodu</label><input autocomplete="off" id="roomCode" maxlength="5" placeholder="K7X2M"/>
+<button class="online-btn primary" id="joinRoom">ODAYA KATIL</button>
+</div>
+<div class="online-error" id="onlineError"></div>
+</div>
+</div>
+<div class="online-overlay" hidden="" id="waiting-overlay">
+<div class="online-card waiting-card">
+<div class="online-title">ODA <span id="waitingCode"></span></div>
+<div class="online-subtitle">4 koltuk dolunca oyun başlar</div>
+<div class="seat-grid-vip" id="seatGrid"></div>
+<div class="waiting-players" id="waitingPlayers"></div>
+<div class="waiting-actions">
+<button class="online-btn secondary" id="spectatorBtn">İZLEYİCİ OL</button>
+<button class="online-btn primary" hidden="" id="startGame">OYUNU BAŞLAT</button>
+</div>
+</div>
+</div>
+<header class="top-navbar">
+<div class="brand-logo">
+<span class="tile-icon"></span>
+            DÜZ OKEY VIP
+        </div>
+<div class="status-pill">
+<span class="status-dot"></span>
+<span id="status-text">Oyun yükleniyor...</span>
+</div>
+<button class="header-btn" onclick="toggleSound()">
+<span id="sound-icon">🔊</span> <span id="sound-text">Ses: AÇIK</span>
+</button>
 </header>
-
-<!-- ===================== YAN REKLAM SÜTUNLARI (Rummikub tarzı) ===================== -->
-<aside class="ad-side ad-side-left" aria-hidden="true"><div class="ad-side-inner"><span>REKLAM</span></div></aside>
-<aside class="ad-side ad-side-right" aria-hidden="true"><div class="ad-side-inner"><span>REKLAM</span></div></aside>
-
-<!-- ===================== ALT REKLAM BANNER ===================== -->
-<div class="ad-bottom" aria-hidden="true"><span>REKLAM ALANI</span></div>
-
-<!-- ===================== OYUN SAHNESİ (üst/alt/yan çubuklar arasında sabit) ===================== -->
-<div id="stage">
-
-  <!-- ===================== LOBBY ===================== -->
-  <section id="view-lobby" class="view view-lobby">
-    <div class="lobby-card">
-      <h1 class="logo">Okey<span class="logo-accent">Masası</span></h1>
-      <p class="tagline">Gösterge açılsın, kupa karışsın. Arkadaşlarınla ya da botlara karşı oyna.</p>
-
-      <button id="quickPlayBtn" class="btn btn-quick">⚡ Hızlı Oyun <small>(Botlara Karşı)</small></button>
-
-      <div class="divider"><span>ya da arkadaşlarınla oyna</span></div>
-
-      <div class="auth-tabs">
-        <button class="tab-btn active" data-tab="create" type="button">Oda Kur</button>
-        <button class="tab-btn" data-tab="join" type="button">Odaya Katıl</button>
-      </div>
-
-      <div class="auth-panels">
-        <div class="auth-panel active" id="panel-create">
-          <label class="field">
-            <span>Adın</span>
-            <input id="nameInputCreate" maxlength="20" placeholder="örn. Ayşe" autocomplete="off" />
-          </label>
-          <button id="createRoomBtn" class="btn btn-primary">Yeni Oda Aç</button>
-        </div>
-        <div class="auth-panel" id="panel-join">
-          <label class="field">
-            <span>Adın</span>
-            <input id="nameInputJoin" maxlength="20" placeholder="örn. Ayşe" autocomplete="off" />
-          </label>
-          <label class="field">
-            <span>Oda Kodu</span>
-            <input id="codeInput" maxlength="5" placeholder="ör. K7X2M" autocomplete="off" style="text-transform:uppercase" />
-          </label>
-          <button id="joinRoomBtn" class="btn btn-secondary">Odaya Katıl</button>
-        </div>
-      </div>
-
-      <p class="hint">Oda kodunu arkadaşlarına gönder, aynı kodla katılsınlar.</p>
-    </div>
-  </section>
-
-  <!-- ===================== WAITING / SEATING ===================== -->
-  <section id="view-waiting" class="view view-waiting" hidden>
-    <header class="table-header">
-      <div class="room-code-badge">Oda Kodu: <strong id="roomCodeLabel">-----</strong> <button id="copyCodeBtn" class="mini-btn" title="Kodu kopyala">⧉</button></div>
-      <button id="voiceToggleWaiting" class="mini-btn voice-btn">🎤 Sesi Aç</button>
-      <button id="chatToggleBtn" class="mini-btn">💬 Sohbet</button>
-      <button id="leaveWaitingBtn" class="mini-btn" title="Ana menüye dön">🏠</button>
-    </header>
-
-    <div class="seating-area">
-      <h2>Yerini Seç</h2>
-      <p class="hint">4 oyuncu masaya oturur, kalanlar izleyici olarak sesli sohbete katılabilir. (Maksimum 8 kişi)</p>
-
-      <div class="seat-grid" id="seatGrid"></div>
-
-      <button id="spectatorBtn" class="btn btn-ghost">İzleyici Ol</button>
-
-      <div class="players-list" id="playersList"></div>
-
-      <button id="startGameBtn" class="btn btn-primary" hidden>Oyunu Başlat</button>
-      <p id="startHint" class="hint"></p>
-    </div>
-  </section>
-
-  <!-- ===================== GAME TABLE — DÜZ OKEY VIP UI ===================== -->
-  <section id="view-game" class="view view-game" hidden>
-    <header class="table-header vip-header">
-      <div class="room-code-badge">Oda: <strong id="roomCodeLabel2">-----</strong></div>
-      <div id="status-text" class="turn-banner">Oyun yükleniyor...</div>
-      <div class="header-actions">
-        <button id="soundBtn" class="mini-btn"><span id="sound-icon">🔊</span> <span id="sound-text">Ses: AÇIK</span></button>
-        <button id="voiceToggleGame" class="mini-btn voice-btn">🎤 Sesi Aç</button>
-        <button id="chatToggleBtn2" class="mini-btn">💬 Sohbet</button>
-        <button id="leaveGameBtn" class="mini-btn" title="Ana menüye dön">🏠</button>
-      </div>
-    </header>
-
-    <main id="game-board">
-      <div id="seat-top" class="player-badge"><div class="player-avatar">👤</div><div class="player-info"><div class="player-name" id="name-top">Oyuncu</div><div class="player-score">TAŞ: <span id="score-top">14</span></div><div class="timer-bar"><div id="timer-top" class="timer-fill"></div></div></div></div>
-      <div id="seat-left" class="player-badge"><div class="player-avatar">👤</div><div class="player-info"><div class="player-name" id="name-left">Oyuncu</div><div class="player-score">TAŞ: <span id="score-left">14</span></div><div class="timer-bar"><div id="timer-left" class="timer-fill"></div></div></div></div>
-      <div id="seat-bottom" class="player-badge"><div class="player-avatar">🧑</div><div class="player-info"><div class="player-name" id="name-player">Sen</div><div class="player-score">TAŞ: <span id="score-player">14</span></div><div class="timer-bar"><div id="timer-player" class="timer-fill"></div></div></div></div>
-      <div id="seat-right" class="player-badge"><div class="player-avatar">👤</div><div class="player-info"><div class="player-name" id="name-right">Oyuncu</div><div class="player-score">TAŞ: <span id="score-right">14</span></div><div class="timer-bar"><div id="timer-right" class="timer-fill"></div></div></div></div>
-
-      <div id="discard-top-spot" class="discard-spot"></div>
-      <div id="discard-left-spot" class="discard-spot"></div>
-      <div id="discard-player-spot" class="discard-spot"></div>
-      <div id="discard-right-spot" class="discard-spot"></div>
-
-      <div id="center-area">
-        <div class="center-card-group"><div id="deck-tile" class="tile tile-back" draggable="true"><span id="deck-count">0</span></div><span class="center-card-label">DESTE</span></div>
-        <div class="center-card-group"><div id="gosterge-holder"></div><span class="center-card-label">GÖSTERGE</span></div>
-        <div id="finish-drop-zone" class="center-card-group"><div id="okey-holder"></div><span class="center-card-label finish-label">🎯 BİTİŞ / OKEY AT</span></div>
-      </div>
-    </main>
-
-    <div id="rack-container">
-      <div id="rack-row-1" class="rack-row"></div>
-      <div id="rack-row-2" class="rack-row"></div>
-    </div>
-    <footer class="action-bar vip-actions">
-      <button id="sortSeriBtn" class="btn-action">⚡ Diz (Akıllı Dizilim)</button>
-      <button id="sortColorBtn" class="btn-action">🎨 Renge Göre</button>
-      <button id="sortNumberBtn" class="btn-action">🔢 Sayıya Göre</button>
-      <button id="discardBtn" class="btn-action">🎯 Seçili Taşı At</button>
-      <button id="finishBtn" class="btn-action btn-finish">🏆 OKEY AT / BİTİR</button>
-      <button id="manualWinBtn" class="btn-action">🖐 Elimi Açıyorum</button>
-      <button id="newHandBtn" class="btn-action" hidden>Yeni El</button>
-    </footer>
-  </section>
-
+<main id="game-board">
+<div class="player-badge" id="seat-top">
+<div class="player-avatar">👩</div>
+<div class="player-info">
+<div class="player-name" id="name-top">Gamze</div>
+<div class="player-score" id="score-top">PUAN: 21</div>
+<div class="timer-bar"><div class="timer-fill" id="timer-top"></div></div>
+</div>
+</div>
+<div class="player-badge" id="seat-left">
+<div class="player-avatar">👨‍✈️</div>
+<div class="player-info">
+<div class="player-name" id="name-left">Deniz</div>
+<div class="player-score" id="score-left">PUAN: 21</div>
+<div class="timer-bar"><div class="timer-fill" id="timer-left"></div></div>
+</div>
+</div>
+<div class="player-badge" id="seat-bottom">
+<div class="player-avatar">👩‍🦰</div>
+<div class="player-info">
+<div class="player-name" id="name-player">Alya (Siz)</div>
+<div class="player-score" id="score-player">PUAN: 21</div>
+<div class="timer-bar"><div class="timer-fill" id="timer-player"></div></div>
+</div>
+</div>
+<div class="player-badge" id="seat-right">
+<div class="player-avatar">👨</div>
+<div class="player-info">
+<div class="player-name" id="name-right">Kemal</div>
+<div class="player-score" id="score-right">PUAN: 21</div>
+<div class="timer-bar"><div class="timer-fill" id="timer-right"></div></div>
+</div>
+</div>
+<div class="discard-spot" id="discard-top-spot"></div>
+<div class="discard-spot" id="discard-left-spot" onclick="drawFromLeftDiscard()"></div>
+<div class="discard-spot" id="discard-player-spot"></div>
+<div class="discard-spot" id="discard-right-spot"></div>
+<div id="center-area">
+<div class="center-card-group">
+<div class="tile tile-back" draggable="true" id="deck-tile" onclick="drawFromDeck()">
+<span id="deck-count">45</span>
+</div>
+<span class="center-card-label">DESTE</span>
+</div>
+<div class="center-card-group">
+<div id="gosterge-holder"></div>
+<span class="center-card-label">GÖSTERGE</span>
+</div>
+<div class="center-card-group" id="finish-drop-zone" onclick="finishGame()">
+<div id="okey-holder"></div>
+<span class="center-card-label" style="color: #ef4444;">🎯 BİTİŞ / OKEY AT</span>
+</div>
+</div>
+</main>
+<div id="rack-container">
+<div class="rack-row" id="rack-row-1"></div>
+<div class="rack-row" id="rack-row-2"></div>
+</div>
+<footer class="action-bar">
+<button class="btn-action" onclick="sortSeri()">⚡ Diz (Akıllı Dizilim)</button>
+<button class="btn-action" onclick="sortByColor()">🎨 Renge Göre</button>
+<button class="btn-action" onclick="sortByNumber()">🔢 Sayıya Göre</button>
+<button class="btn-action" onclick="discardSelectedTile()">🎯 Seçili Taşı At</button>
+<button class="btn-action btn-finish" onclick="finishGame()">🏆 OKEY AT / BİTİR</button>
+</footer>
+<div class="modal-overlay" id="game-modal">
+<div class="modal-card">
+<div class="modal-title" id="modal-title">🏆 OYUN BİTTİ</div>
+<div class="modal-body" id="modal-body">Tebrikler, kazandınız!</div>
+<button class="btn-modal" onclick="newRound()">YENİ EL BAŞLAT</button>
+</div>
 </div>
 
-<!-- ===================== CHAT PANEL (paylaşılan) ===================== -->
-<aside id="chatPanel" class="chat-panel" hidden>
-  <div class="chat-header">
-    <span>Sohbet</span>
-    <button id="chatCloseBtn" class="mini-btn">✕</button>
-  </div>
-  <div id="chatMessages" class="chat-messages"></div>
-  <form id="chatForm" class="chat-form">
-    <input id="chatInput" maxlength="500" placeholder="Mesaj yaz..." autocomplete="off" />
-    <button type="submit" class="mini-btn">Gönder</button>
-  </form>
-</aside>
-
-<!-- ===================== MANUAL WIN DIALOG ===================== -->
-<div id="manualWinDialog" class="modal" hidden>
-  <div class="modal-card">
-    <h3 id="manualWinTitle">Bitiş İddiası</h3>
-    <div id="manualWinTiles" class="manual-win-tiles"></div>
-    <div class="modal-actions" id="manualWinActions"></div>
-  </div>
-</div>
-
-<script src="/socket.io/socket.io.js"></script>
-<script src="client.js"></script>
-</body>
+<script src="/client.js"></script></body>
 </html>
