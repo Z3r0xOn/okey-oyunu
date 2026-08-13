@@ -1,9 +1,11 @@
 {
-  "name":"duz-okey-party-vip",
-  "version":"1.0.0",
-  "description":"Düz Okey Party - VIP arayüz + Socket.IO online altyapı",
-  "main":"server.js",
-  "scripts":{"start":"node server.js"},
-  "dependencies":{"express":"^4.19.2","socket.io":"^4.7.5"},
-  "engines":{"node":">=18"}
+  "name": "duz-okey-party-vip",
+  "version": "1.0.0",
+  "private": true,
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
 }
