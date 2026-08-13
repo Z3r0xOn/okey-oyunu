@@ -56,7 +56,8 @@ function startNewHand(seats) {
     turnIndex: dealerIndex, // dealer starts by discarding (already has 15)
     phase: 'discard', // 'draw' | 'discard'
     finished: false,
-    winnerId: null
+    winnerId: null,
+    discardBySeat: [null, null, null, null]
   };
 }
 
