@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="theme-color" content="#0a3a2a" />
-<title>Okey Masası — Klasik & Pro Okey Mekanikleri</title>
+<title>Okey Masası — Klasik Okey, Arkadaşlarla & Botlara Karşı</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Nunito+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css" />
@@ -19,7 +19,7 @@
 <!-- ===================== ÜST ÇUBUK ===================== -->
 <header id="topBar" class="top-bar">
   <div class="top-bar-left">
-    <span class="brand">Okey<span class="brand-accent">Masası Pro</span></span>
+    <span class="brand">Okey<span class="brand-accent">Masası</span></span>
   </div>
   <div class="top-bar-center">
     <span class="online-pill"><span class="dot"></span><span id="onlineCount">0</span> çevrimiçi</span>
@@ -29,14 +29,14 @@
   </div>
 </header>
 
-<!-- ===================== YAN REKLAM SÜTUNLARI ===================== -->
+<!-- ===================== YAN REKLAM SÜTUNLARI (Rummikub tarzı) ===================== -->
 <aside class="ad-side ad-side-left" aria-hidden="true"><div class="ad-side-inner"><span>REKLAM</span></div></aside>
 <aside class="ad-side ad-side-right" aria-hidden="true"><div class="ad-side-inner"><span>REKLAM</span></div></aside>
 
 <!-- ===================== ALT REKLAM BANNER ===================== -->
 <div class="ad-bottom" aria-hidden="true"><span>REKLAM ALANI</span></div>
 
-<!-- ===================== OYUN SAHNESİ ===================== -->
+<!-- ===================== OYUN SAHNESİ (üst/alt/yan çubuklar arasında sabit) ===================== -->
 <div id="stage">
 
   <!-- ===================== LOBBY ===================== -->
@@ -103,67 +103,55 @@
     </div>
   </section>
 
-  <!-- ===================== GAME TABLE (PRO OKEY) ===================== -->
+  <!-- ===================== GAME TABLE — DÜZ OKEY VIP UI ===================== -->
   <section id="view-game" class="view view-game" hidden>
-    <!-- SÜRE ÇUBUĞU (TIMER) -->
-    <div class="timer-container">
-      <div class="timer-bar" id="timerBar"></div>
-    </div>
-
-    <header class="table-header">
+    <header class="table-header vip-header">
       <div class="room-code-badge">Oda: <strong id="roomCodeLabel2">-----</strong></div>
-      <div id="turnBanner" class="turn-banner">-</div>
+      <div id="status-text" class="turn-banner">Oyun yükleniyor...</div>
       <div class="header-actions">
+        <button id="soundBtn" class="mini-btn"><span id="sound-icon">🔊</span> <span id="sound-text">Ses: AÇIK</span></button>
         <button id="voiceToggleGame" class="mini-btn voice-btn">🎤 Sesi Aç</button>
         <button id="chatToggleBtn2" class="mini-btn">💬 Sohbet</button>
         <button id="leaveGameBtn" class="mini-btn" title="Ana menüye dön">🏠</button>
       </div>
     </header>
 
-    <div class="okey-table">
-      <div class="felt">
-        <div class="indicator-area">
-          <div class="indicator-label">Gösterge</div>
-          <div id="indicatorTile" class="tile tile-back"></div>
-          <div class="okey-label">Okey: <span id="okeySpecLabel">-</span></div>
-        </div>
+    <main id="game-board">
+      <div id="seat-top" class="player-badge"><div class="player-avatar">👤</div><div class="player-info"><div class="player-name" id="name-top">Oyuncu</div><div class="player-score">TAŞ: <span id="score-top">14</span></div><div class="timer-bar"><div id="timer-top" class="timer-fill"></div></div></div></div>
+      <div id="seat-left" class="player-badge"><div class="player-avatar">👤</div><div class="player-info"><div class="player-name" id="name-left">Oyuncu</div><div class="player-score">TAŞ: <span id="score-left">14</span></div><div class="timer-bar"><div id="timer-left" class="timer-fill"></div></div></div></div>
+      <div id="seat-bottom" class="player-badge"><div class="player-avatar">🧑</div><div class="player-info"><div class="player-name" id="name-player">Sen</div><div class="player-score">TAŞ: <span id="score-player">14</span></div><div class="timer-bar"><div id="timer-player" class="timer-fill"></div></div></div></div>
+      <div id="seat-right" class="player-badge"><div class="player-avatar">👤</div><div class="player-info"><div class="player-name" id="name-right">Oyuncu</div><div class="player-score">TAŞ: <span id="score-right">14</span></div><div class="timer-bar"><div id="timer-right" class="timer-fill"></div></div></div></div>
 
-        <div class="center-piles">
-          <button id="deckPile" class="pile deck-pile" title="Kupadan çek">
-            <span id="deckCount">0</span>
-            <small>KUPA</small>
-          </button>
-          <button id="discardPile" class="pile discard-pile" title="Ortadan çek">
-            <div id="discardTopTile" class="tile tile-empty"></div>
-            <small>ORTA</small>
-          </button>
-        </div>
+      <div id="discard-top-spot" class="discard-spot"></div>
+      <div id="discard-left-spot" class="discard-spot"></div>
+      <div id="discard-player-spot" class="discard-spot"></div>
+      <div id="discard-right-spot" class="discard-spot"></div>
 
-        <div class="seat-remote seat-top" id="seatTop"></div>
-        <div class="seat-remote seat-left" id="seatLeft"></div>
-        <div class="seat-remote seat-right" id="seatRight"></div>
+      <div id="center-area">
+        <div class="center-card-group"><div id="deck-tile" class="tile tile-back" draggable="true"><span id="deck-count">0</span></div><span class="center-card-label">DESTE</span></div>
+        <div class="center-card-group"><div id="gosterge-holder"></div><span class="center-card-label">GÖSTERGE</span></div>
+        <div id="finish-drop-zone" class="center-card-group"><div id="okey-holder"></div><span class="center-card-label finish-label">🎯 BİTİŞ / OKEY AT</span></div>
       </div>
+    </main>
 
-      <div class="action-bar">
-        <button id="drawDeckBtn" class="btn btn-small">Kupadan Çek</button>
-        <button id="drawDiscardBtn" class="btn btn-small">Ortadan Çek</button>
-        <button id="smartSortBtn" class="btn btn-small btn-secondary">Akıllı Diz 🧩</button>
-        <button id="declareWinBtn" class="btn btn-small btn-gold">Elimi Bitirdim</button>
-        <button id="manualWinBtn" class="btn btn-small btn-ghost">Elimi Açıyorum</button>
-        <button id="newHandBtn" class="btn btn-small btn-ghost" hidden>Yeni El</button>
-      </div>
-
-      <!-- 22 Slotlu Çift Sıralı Ahşap Istaka -->
-      <div class="rack-holder" id="rackHolder">
-        <div class="rack-row" id="rackRowTop"></div>
-        <div class="rack-row" id="rackRowBottom"></div>
-      </div>
+    <div id="rack-container">
+      <div id="rack-row-1" class="rack-row"></div>
+      <div id="rack-row-2" class="rack-row"></div>
     </div>
+    <footer class="action-bar vip-actions">
+      <button id="sortSeriBtn" class="btn-action">⚡ Diz (Akıllı Dizilim)</button>
+      <button id="sortColorBtn" class="btn-action">🎨 Renge Göre</button>
+      <button id="sortNumberBtn" class="btn-action">🔢 Sayıya Göre</button>
+      <button id="discardBtn" class="btn-action">🎯 Seçili Taşı At</button>
+      <button id="finishBtn" class="btn-action btn-finish">🏆 OKEY AT / BİTİR</button>
+      <button id="manualWinBtn" class="btn-action">🖐 Elimi Açıyorum</button>
+      <button id="newHandBtn" class="btn-action" hidden>Yeni El</button>
+    </footer>
   </section>
 
 </div>
 
-<!-- ===================== CHAT PANEL ===================== -->
+<!-- ===================== CHAT PANEL (paylaşılan) ===================== -->
 <aside id="chatPanel" class="chat-panel" hidden>
   <div class="chat-header">
     <span>Sohbet</span>
