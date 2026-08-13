@@ -10,6 +10,24 @@ const io = new Server(server);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Proje dosyaları mevcut ZIP yapısında kökte de bulunabilir.
+// public/ klasörü varsa önceliklidir; yoksa kök dosyalar doğrudan servis edilir.
+app.get('/', (req, res) => {
+  const publicIndex = path.join(__dirname, 'public', 'index.html');
+  const rootIndex = path.join(__dirname, 'index.html');
+  res.sendFile(require('fs').existsSync(publicIndex) ? publicIndex : rootIndex);
+});
+app.get('/style.css', (req, res) => {
+  const publicCss = path.join(__dirname, 'public', 'style.css');
+  const rootCss = path.join(__dirname, 'style.css');
+  res.sendFile(require('fs').existsSync(publicCss) ? publicCss : rootCss);
+});
+app.get('/client.js', (req, res) => {
+  const publicClient = path.join(__dirname, 'public', 'client.js');
+  const rootClient = path.join(__dirname, 'client.js');
+  res.sendFile(require('fs').existsSync(publicClient) ? publicClient : rootClient);
+});
+
 /**
  * rooms[code] = {
  *   code, hostId, quick: bool,
@@ -373,23 +391,29 @@ io.on('connection', socket => {
 
   socket.on('chatMsg', text => {
     const room = rooms[socket.data.roomCode];
-    if (!room) return;
+    if (!room || !room.players[socket.id]) return;
     const name = room.players[socket.id]?.name || 'Oyuncu';
-    io.to(room.code).emit('chatMsg', { system: false, name, text: String(text).slice(0, 500) });
+    const cleanText = String(text ?? '').trim().slice(0, 500);
+    if (!cleanText) return;
+    io.to(room.code).emit('chatMsg', { system: false, name, text: cleanText });
   });
 
   // --- WebRTC sesli sohbet sinyalleşmesi (basit mesh, sunucu sadece aracı) ---
   socket.on('voiceJoin', () => {
     const room = rooms[socket.data.roomCode];
-    if (!room) return;
+    if (!room || !room.players[socket.id]) return;
     socket.to(room.code).emit('voicePeerJoined', socket.id);
   });
   socket.on('voiceLeave', () => {
     const room = rooms[socket.data.roomCode];
-    if (!room) return;
+    if (!room || !room.players[socket.id]) return;
     socket.to(room.code).emit('voicePeerLeft', socket.id);
   });
   socket.on('voiceSignal', ({ to, signal }) => {
+    const room = rooms[socket.data.roomCode];
+    if (!room || !room.players[socket.id] || !room.players[to]) return;
+    const targetRoom = io.sockets.sockets.get(to)?.data?.roomCode;
+    if (targetRoom !== room.code) return;
     io.to(to).emit('voiceSignal', { from: socket.id, signal });
   });
 
