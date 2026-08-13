@@ -15,7 +15,7 @@
   --c-sari: #c99a1f;
   --c-mavi: #1f5fa8;
   --c-siyah: #1b1b1b;
-  --danger: #e84118;
+  --danger: #d1453b;
   --radius: 14px;
   --font-display: 'Cinzel', serif;
   --font-body: 'Nunito Sans', sans-serif;
@@ -25,6 +25,7 @@
   --sal: env(safe-area-inset-left, 0px);
   --sar: env(safe-area-inset-right, 0px);
 
+  /* Rummikub tarzı reklam çerçevesi ölçüleri: üst/alt bar + yan sütunlar */
   --topbar-h: calc(42px + var(--sat));
   --bottombar-h: calc(50px + var(--sab));
   --side-w: clamp(34px, 7vw, 150px);
@@ -62,23 +63,9 @@ button { cursor: pointer; }
 input, textarea, [contenteditable] { touch-action: manipulation; }
 :focus-visible { outline: 2px solid var(--gold-light); outline-offset: 2px; }
 
-/* ==================== SÜRE ÇUBUĞU (TIMER) ==================== */
-.timer-container {
-  width: 100%;
-  height: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-  position: relative;
-  z-index: 10;
-}
-.timer-bar {
-  width: 100%;
-  height: 100%;
-  background: #4cd137;
-  transition: width 0.3s linear, background-color 0.3s;
-}
-
-/* ==================== ÜST ÇUBUK ==================== */
+/* ============================================================
+   ÜST ÇUBUK
+   ============================================================ */
 .top-bar {
   position: fixed;
   top: 0; left: 0; right: 0;
@@ -111,7 +98,9 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
 }
 .online-pill .dot { width: 7px; height: 7px; border-radius: 50%; background: #3ecf6a; box-shadow: 0 0 6px #3ecf6a; }
 
-/* ==================== REKLAM SÜTUNLARI & BANNER ==================== */
+/* ============================================================
+   YAN REKLAM SÜTUNLARI + ALT BANNER (Rummikub tarzı çerçeve)
+   ============================================================ */
 .ad-side {
   position: fixed;
   top: var(--topbar-h);
@@ -158,7 +147,9 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
   pointer-events: none;
 }
 
-/* ==================== SAHNE ==================== */
+/* ============================================================
+   SAHNE — üst/alt/yan reklam çerçevesi arasında sabit oyun alanı
+   ============================================================ */
 #stage {
   position: fixed;
   top: var(--topbar-h);
@@ -280,7 +271,7 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
   .auth-panel { display: flex !important; flex-direction: column; flex: 1; background: rgba(0,0,0,0.15); border-radius: 10px; padding: 14px; border: 1px solid rgba(212,175,55,0.18); }
 }
 
-/* ---------- Header shared ---------- */
+/* ---------- Header shared (waiting / game) ---------- */
 .table-header {
   display: flex;
   align-items: center;
@@ -348,7 +339,9 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
 .player-chip.host::after { content: '👑'; margin-left: auto; }
 .player-chip .spot { color: var(--gold-light); }
 
-/* ==================== OYUN MASASI ==================== */
+/* ============================================================
+   OYUN MASASI
+   ============================================================ */
 .view-game { display: flex; flex-direction: column; height: 100%; }
 .okey-table { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
 .felt {
@@ -373,7 +366,7 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
 .okey-label { font-size: 0.65rem; color: var(--gold-light); margin-top: 4px; }
 
 .center-piles { display: flex; gap: 16px; align-items: center; }
-.pile { background: transparent; border: none; display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--muted); cursor: pointer; }
+.pile { background: transparent; border: none; display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--muted); }
 .pile small { font-size: 0.58rem; letter-spacing: 0.08em; }
 .deck-pile #deckCount {
   width: 40px; height: 55px; border-radius: 6px;
@@ -385,20 +378,7 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
 }
 .deck-pile:active #deckCount { transform: scale(0.92); }
 
-/* ==================== TAŞ & SLOT TASARIMI ==================== */
-.slot {
-  width: 40px;
-  height: 55px;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px dashed rgba(212, 175, 55, 0.25);
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  flex-shrink: 0;
-}
-
+/* Taşlar */
 .tile {
   width: 40px; height: 55px;
   border-radius: 6px;
@@ -407,41 +387,26 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
   box-shadow: 0 2px 0 rgba(0,0,0,0.25), 0 4px 8px rgba(0,0,0,0.3);
   display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: 1.02rem; color: var(--ink);
-  position: absolute;
+  position: relative;
   user-select: none;
   flex-shrink: 0;
-  cursor: grab;
 }
-.tile:active { cursor: grabbing; }
-.tile.dragging { opacity: 0.4; }
-
-.tile.tile-back { background: linear-gradient(160deg, var(--wood-light), var(--wood)); border-color: var(--gold); position: relative; }
-.tile.tile-empty { background: rgba(255,255,255,0.06); border: 1px dashed rgba(255,255,255,0.25); box-shadow: none; position: relative; }
-
-/* Renk Varyasyonları */
-.tile.color-kirmizi, .tile.color-red { color: var(--c-kirmizi); }
-.tile.color-sari, .tile.color-yellow { color: var(--c-sari); }
-.tile.color-mavi, .tile.color-blue { color: var(--c-mavi); }
-.tile.color-siyah, .tile.color-black { color: var(--c-siyah); }
-
+.tile.tile-back { background: linear-gradient(160deg, var(--wood-light), var(--wood)); border-color: var(--gold); }
+.tile.tile-empty { background: rgba(255,255,255,0.06); border: 1px dashed rgba(255,255,255,0.25); box-shadow: none; }
+.tile.color-kirmizi { color: var(--c-kirmizi); }
+.tile.color-sari { color: var(--c-sari); }
+.tile.color-mavi { color: var(--c-mavi); }
+.tile.color-siyah { color: var(--c-siyah); }
 .tile.is-joker { background: linear-gradient(160deg, var(--gold-light), var(--gold)); color: #241a05; font-size: 0.8rem; }
 .tile.is-okey { box-shadow: 0 0 0 2px var(--gold), 0 4px 10px rgba(212,175,55,0.5); }
 .tile.selected { transform: translateY(-10px); box-shadow: 0 0 0 2px var(--gold-light), 0 8px 14px rgba(0,0,0,0.4); }
 .tile.clickable { cursor: pointer; }
+.tile.clickable:hover { transform: translateY(-4px); }
 
-/* Klasik Okey Ahşap Yuva Tasarımı */
+/* Klasik 51-okey taşlığındaki taşlar: kubbeli üst kenar, ahşap yuvaya oturmuş görünüm */
 .tile.tile-classic {
-  border-radius: 8px 8px 4px 4px;
+  border-radius: 9px 9px 4px 4px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.7), 0 2px 0 rgba(0,0,0,0.25), 0 3px 6px rgba(0,0,0,0.35);
-}
-
-/* UÇAN TAŞ ANİMASYONU */
-.flying-tile {
-  position: fixed !important;
-  z-index: 9999;
-  transition: all 0.35s ease-in-out;
-  pointer-events: none;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
 }
 
 @keyframes tileDrawIn {
@@ -471,7 +436,7 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
 .seat-remote .rname { font-weight: 700; color: var(--cream); }
 .seat-remote .rname .bot-tag { color: var(--gold-light); font-size: 0.58rem; margin-left: 3px; }
 .seat-remote .mini-tiles { display: flex; gap: 2px; flex-wrap: wrap; justify-content: center; max-width: 140px; }
-.seat-remote .mini-tiles .tile { width: 15px; height: 22px; border-radius: 3px; position: relative; }
+.seat-remote .mini-tiles .tile { width: 15px; height: 22px; border-radius: 3px; }
 .seat-remote.active .rname { color: var(--gold-light); }
 .seat-top { top: 6px; left: 50%; transform: translateX(-50%); }
 .seat-left { left: 6px; top: 50%; transform: translateY(-50%); flex-direction: row; }
@@ -483,7 +448,7 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
   flex-shrink: 0;
 }
 
-/* ---------- 22 Slotlu Çift Sıralı Ahşap Istaka ---------- */
+/* ---------- Klasik 51-Okey iki katlı ahşap taşlık ---------- */
 .rack-holder {
   display: flex;
   flex-direction: column;
@@ -497,15 +462,14 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
 }
 .rack-row {
   display: flex;
-  gap: 4px;
-  justify-content: center;
+  gap: 3px;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 5px 6px;
   background: rgba(0,0,0,0.22);
   border-radius: 8px;
   box-shadow: inset 0 2px 6px rgba(0,0,0,0.4), inset 0 -1px 0 rgba(255,255,255,0.04);
-  min-height: 65px;
+  min-height: 52px;
   align-items: center;
   -webkit-overflow-scrolling: touch;
 }
@@ -547,13 +511,31 @@ input, textarea, [contenteditable] { touch-action: manipulation; }
 .toast[hidden] { display: none; }
 
 /* ---------- Responsive ---------- */
-@media (max-width: 480px) {
-  .slot, .tile { width: 34px; height: 48px; font-size: 0.85rem; }
+@media (max-width: 380px) {
+  .tile { width: 32px; height: 46px; font-size: 0.82rem; }
   .seat-remote .tile { width: 13px; height: 19px; }
-  .rack-row { min-height: 58px; gap: 2px; }
+  .ad-side-inner span { font-size: 0.55rem; }
 }
 
 @media (min-width: 900px) {
-  .slot, .tile { width: 48px; height: 68px; font-size: 1.2rem; }
-  .rack-row { min-height: 80px; gap: 5px; }
+  .tile { width: 50px; height: 68px; font-size: 1.2rem; }
+  .rack-row { min-height: 92px; }
 }
+
+@media (orientation: landscape) and (max-height: 480px) {
+  .indicator-area { transform: scale(0.75); transform-origin: top left; }
+}
+
+
+/* ============================================================
+   DÜZ OKEY VIP — diğer oyunun birebir oyun hissi
+   ============================================================ */
+#game-board{flex:1;position:relative;background:radial-gradient(circle at center,#115732 0%,#083b20 70%,#031e0f 100%);box-shadow:inset 0 0 100px rgba(0,0,0,.8);overflow:hidden}
+#game-board::before{content:"";position:absolute;inset:0;background-image:radial-gradient(rgba(255,255,255,.03) 1px,transparent 1px);background-size:14px 14px;pointer-events:none}
+.player-badge{position:absolute;background:rgba(13,18,15,.88);border:1px solid rgba(255,255,255,.2);border-radius:8px;padding:6px 12px;display:flex;align-items:center;gap:10px;box-shadow:0 6px 16px rgba(0,0,0,.5);z-index:10;transition:border-color .3s,box-shadow .3s}.player-avatar{width:36px;height:36px;border-radius:6px;background:#1a2820;border:1px solid #ffc107;display:flex;justify-content:center;align-items:center;font-size:18px}.player-info{display:flex;flex-direction:column;gap:2px;min-width:80px}.player-name{font-size:12px;font-weight:700;color:#fff}.player-score{font-size:10px;font-weight:700;color:#ffc107}.timer-bar{width:100%;height:4px;background:rgba(255,255,255,.15);border-radius:2px;overflow:hidden;margin-top:2px}.timer-fill{height:100%;width:100%;background:linear-gradient(90deg,#00f2fe,#4facfe);transition:width .35s linear}.active-turn{border-color:#ffc107!important;box-shadow:0 0 15px rgba(255,193,7,.6)!important}
+#seat-top{top:15px;left:50%;transform:translateX(-50%)}#seat-left{left:25px;top:38%;transform:translateY(-50%)}#seat-bottom{bottom:10px;left:50%;transform:translateX(-50%)}#seat-right{right:25px;top:38%;transform:translateY(-50%)}
+.tile{width:40px;height:56px;background:linear-gradient(180deg,#fff 0%,#f4eee2 85%,#dfd1b8 100%);border-radius:5px;border-top:1px solid #fff;border-left:1px solid #fff;border-right:2px solid #b8a68d;border-bottom:4px solid #99876e;display:flex;flex-direction:column;justify-content:center;align-items:center;font-weight:800;font-size:22px;box-shadow:0 4px 8px rgba(0,0,0,.4);cursor:grab;position:relative;transition:transform .15s,box-shadow .15s;flex-shrink:0}.tile:active{cursor:grabbing}.tile.red{color:#d32f2f}.tile.black{color:#1e1e1e}.tile.blue{color:#1976d2}.tile.yellow{color:#f57c00}.tile .star{font-size:12px;color:#2e7d32}.tile.selected{transform:translateY(-8px);border:2px solid #ffc107;box-shadow:0 0 12px rgba(255,193,7,.8)}.tile.is-okey{box-shadow:0 0 0 2px #ffc107,0 4px 10px rgba(255,193,7,.5)}.tile-back{background:linear-gradient(180deg,#2b4c7e 0%,#1a335a 100%);border:1px solid #3d639d;border-bottom:4px solid #10213d;color:transparent}.tile-back::after{content:""}.tile-enter{animation:vipTileIn .32s cubic-bezier(.2,.8,.3,1.2)}@keyframes vipTileIn{from{opacity:0;transform:translateY(-24px) scale(.7)}to{opacity:1;transform:none}}
+.discard-spot{position:absolute;width:42px;height:58px;border:1.5px dashed rgba(255,255,255,.25);border-radius:6px;display:flex;justify-content:center;align-items:center;z-index:5;background:rgba(0,0,0,.15);transition:border-color .2s,box-shadow .2s}.discard-spot.takeable{border-color:#22c55e;box-shadow:0 0 15px rgba(34,197,94,.8);cursor:grab;animation:vipPulse 1.2s infinite}@keyframes vipPulse{50%{transform:scale(1.08)}}#discard-top-spot{top:90px;left:110px}#discard-left-spot{bottom:20px;left:110px}#discard-player-spot{bottom:20px;right:110px}#discard-right-spot{top:90px;right:110px}
+#center-area{position:absolute;top:42%;left:50%;transform:translate(-50%,-50%);background:rgba(12,30,20,.85);border:1px solid rgba(255,255,255,.12);padding:12px 22px;border-radius:14px;display:flex;gap:20px;align-items:center;box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:8}.center-card-group{display:flex;flex-direction:column;align-items:center;gap:4px}.center-card-label{font-size:10px;font-weight:700;color:#94a3b8;letter-spacing:.5px}.finish-label{color:#ef4444}.rack-container{height:160px}.vip-actions{height:auto;min-height:46px}.btn-action{background:#1c2620;border:1px solid rgba(255,255,255,.12);border-radius:6px;color:#e2e8f0;padding:7px 16px;font-size:12px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px}.btn-finish{background:linear-gradient(180deg,#dc2626,#991b1b);border-color:#ef4444}.vip-header{z-index:30}
+#rack-container{height:160px;background:linear-gradient(180deg,#2b1810,#1a0e09);border-top:3px solid #4a2d1d;display:flex;flex-direction:column;justify-content:center;align-items:center;padding:8px 0;gap:6px;position:relative;z-index:20}.rack-row{display:flex;gap:3px;background:#120905;padding:4px 6px;border-radius:6px;box-shadow:inset 0 2px 6px rgba(0,0,0,.9);width:fit-content;height:64px;overflow:visible}.rack-slot{width:42px;height:56px;border-radius:4px;display:flex;justify-content:center;align-items:center;background:rgba(255,255,255,.03);border:1px dashed rgba(255,255,255,.08);transition:background-color .15s,border .15s}.rack-slot.hovered{background:rgba(34,197,94,.45)!important;border:1px solid #22c55e!important;box-shadow:0 0 10px rgba(34,197,94,.7)}#rack-container.drag-active{box-shadow:inset 0 0 25px rgba(34,197,94,.5);border-top-color:#22c55e}
+@media(max-width:700px){.player-badge{transform:scale(.82)}#seat-left{left:4px}.player-info{min-width:65px}.tile{width:34px;height:49px;font-size:18px}.rack-row{max-width:98vw;overflow-x:auto}.rack-slot{min-width:36px;width:36px;height:49px}#rack-container{height:130px}.vip-actions{overflow-x:auto;justify-content:flex-start;flex-wrap:nowrap}.btn-action{white-space:nowrap;padding:6px 10px;font-size:10px}#center-area{gap:8px;padding:8px 12px}.discard-spot{width:36px;height:50px}#discard-top-spot{top:65px;left:55px}#discard-left-spot{bottom:10px;left:55px}#discard-player-spot{bottom:10px;right:55px}#discard-right-spot{top:65px;right:55px}}
