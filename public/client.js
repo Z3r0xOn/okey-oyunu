@@ -32,58 +32,224 @@
   $('#soundBtn').addEventListener('click',toggleSound);
 
   function createTileElement(tile,slotIndex=null){
-    const el=document.createElement('div'); el.className='tile';
+    const el=document.createElement('div');
+    el.className='tile';
     if(!tile){el.classList.add('tile-empty');return el;}
     if(tile.joker){el.classList.add('black');el.textContent='★';}
     else{el.classList.add(colorClass(tile));el.textContent=tile.number;}
-    if(isOkey(tile)){el.classList.add('okey-mark');const star=document.createElement('span');star.textContent='★';star.style.cssText='font-size:11px;color:#2e7d32;margin-top:-4px';el.appendChild(star);}
+    if(isOkey(tile)){
+      el.classList.add('okey-mark');
+      const star=document.createElement('span');
+      star.textContent='★';
+      star.style.cssText='font-size:11px;color:#2e7d32;margin-top:-4px';
+      el.appendChild(star);
+    }
     if(slotIndex!==null){
-      el.dataset.slot=slotIndex; el.draggable=true;
-      el.addEventListener('click',e=>{e.stopPropagation();selectSlot(slotIndex);});
-      el.addEventListener('dblclick',e=>{e.stopPropagation();selectedSlotIndex=slotIndex;discardSelectedTile();});
-      el.addEventListener('dragstart',e=>startHtmlDrag(e,slotIndex));
-      el.addEventListener('dragend',()=>{draggedIndices=[];clearHighlights();$('#rack-container').classList.remove('drag-active');});
-      el.addEventListener('pointerdown',e=>startPointerDrag(e,slotIndex));
+      el.dataset.slot=slotIndex;
+      // Native HTML5 drag is deliberately disabled for tiles. Pointer drag gives
+      // the same behaviour with mouse + touch and lets us hit an exact slot.
+      el.draggable=false;
+      el.addEventListener('pointerdown',e=>startTilePointer(e,slotIndex));
+      el.addEventListener('click',e=>e.stopPropagation());
+      el.addEventListener('dblclick',e=>{
+        e.stopPropagation();
+        if(canDiscard()){
+          selectedSlotIndex=slotIndex;
+          discardSelectedTile();
+        }
+      });
     }
     return el;
   }
 
   function renderRack(){
-    const r1=$('#rack-row-1'),r2=$('#rack-row-2');r1.innerHTML='';r2.innerHTML='';
+    const r1=$('#rack-row-1'),r2=$('#rack-row-2');
+    r1.innerHTML='';r2.innerHTML='';
     for(let i=0;i<32;i++){
-      const slot=document.createElement('div');slot.className='rack-slot';slot.dataset.index=i;
-      slot.addEventListener('dragover',e=>{e.preventDefault();highlightTargets(i,draggedIndices.length||1);});
+      const slot=document.createElement('div');
+      slot.className='rack-slot';
+      slot.dataset.index=i;
+      slot.addEventListener('dragover',e=>{
+        e.preventDefault();
+        highlightTargets(i,draggedIndices.length||1);
+      });
       slot.addEventListener('dragleave',()=>clearHighlights());
-      slot.addEventListener('drop',e=>{e.preventDefault();const action=e.dataTransfer.getData('action');clearHighlights();$('#rack-container').classList.remove('drag-active');if(action==='draw-deck')drawFromDeck(i);else if(action==='draw-discard')drawFromLeftDiscard(i);else if(draggedIndices.length)moveTileToExactSlot(draggedIndices,i);});
-      slot.addEventListener('click',()=>{if(!rackSlots[i])return;selectSlot(i);});
-      if(rackSlots[i]){const t=createTileElement(rackSlots[i],i);if(selectedSlotIndex===i||draggedIndices.includes(i))t.classList.add('selected');slot.appendChild(t);}
+      slot.addEventListener('drop',e=>{
+        e.preventDefault();
+        const action=e.dataTransfer.getData('action');
+        clearHighlights();
+        $('#rack-container').classList.remove('drag-active');
+        if(action==='draw-deck') drawFromDeck(i);
+        else if(action==='draw-discard') drawFromLeftDiscard(i);
+      });
+      slot.addEventListener('click',()=>{
+        if(!rackSlots[i]) return;
+        selectSlot(i);
+      });
+      if(rackSlots[i]){
+        const t=createTileElement(rackSlots[i],i);
+        if(selectedSlotIndex===i||draggedIndices.includes(i))t.classList.add('selected');
+        slot.appendChild(t);
+      }
       (i<16?r1:r2).appendChild(slot);
     }
   }
-  function clearHighlights(){document.querySelectorAll('.rack-slot.hovered').forEach(x=>x.classList.remove('hovered'));}
-  function highlightTargets(start,count){clearHighlights();const rowStart=start<16?0:16,rowEnd=rowStart+16;for(let i=0;i<count&&start+i<rowEnd;i++){const s=document.querySelector(`.rack-slot[data-index="${start+i}"]`);if(s)s.classList.add('hovered');}}
-  function getContiguousBlock(idx){const rowStart=idx<16?0:16,rowEnd=rowStart+16;let a=idx,b=idx;while(a>rowStart&&rackSlots[a-1])a--;while(b<rowEnd-1&&rackSlots[b+1])b++;return Array.from({length:b-a+1},(_,i)=>a+i).filter(i=>rackSlots[i]);}
-  function selectSlot(i){playSound();if(selectedSlotIndex==null){selectedSlotIndex=i;}else if(selectedSlotIndex===i){selectedSlotIndex=null;}else{[rackSlots[selectedSlotIndex],rackSlots[i]]=[rackSlots[i],rackSlots[selectedSlotIndex]];selectedSlotIndex=null;}draggedIndices=[];renderRack();}
-  function moveTileToExactSlot(src,target){const rowStart=target<16?0:16,rowEnd=rowStart+16;const moving=src.map(i=>rackSlots[i]).filter(Boolean);src.forEach(i=>rackSlots[i]=null);let vals=[];for(let i=rowStart;i<rowEnd;i++)if(rackSlots[i])vals.push(rackSlots[i]);let pos=Math.max(0,target-rowStart);vals.splice(pos,0,...moving);for(let i=rowStart;i<rowEnd;i++)rackSlots[i]=vals[i-rowStart]||null;selectedSlotIndex=null;draggedIndices=[];playSound();renderRack();}
 
-  function startHtmlDrag(e,idx){
-    draggedIndices=(selectedSlotIndex===idx&&selectedSlotIndex!==null)?[idx]:[idx];
-    e.dataTransfer.setData('action','move-rack');
-    e.dataTransfer.effectAllowed='move';$('#rack-container').classList.add('drag-active');
+  function clearHighlights(){
+    document.querySelectorAll('.rack-slot.hovered').forEach(x=>x.classList.remove('hovered'));
   }
-  function startPointerDrag(e,idx){
-    if(e.pointerType!=='touch')return;
-    clearTimeout(longPressTimer); pointerDrag={idx,startX:e.clientX,startY:e.clientY,moved:false};
-    longPressTimer=setTimeout(()=>{if(pointerDrag&&!pointerDrag.moved){draggedIndices=getContiguousBlock(idx);renderRack();}},260);
-    e.target.setPointerCapture?.(e.pointerId);
-    const move=ev=>{
-      if(!pointerDrag)return;const dx=ev.clientX-pointerDrag.startX,dy=ev.clientY-pointerDrag.startY;
-      if(Math.hypot(dx,dy)>8){pointerDrag.moved=true;clearTimeout(longPressTimer);$('#rack-container').classList.add('drag-active');highlightTouchTarget(ev.clientX,ev.clientY);}
+
+  function highlightTargets(start,count){
+    clearHighlights();
+    const rowStart=start<16?0:16,rowEnd=rowStart+16;
+    for(let i=0;i<count&&start+i<rowEnd;i++){
+      const s=document.querySelector(`.rack-slot[data-index="${start+i}"]`);
+      if(s)s.classList.add('hovered');
+    }
+  }
+
+  function getContiguousBlock(idx){
+    const rowStart=idx<16?0:16;
+    const rowEnd=rowStart+16;
+    let start=idx,end=idx;
+    while(start>rowStart&&rackSlots[start-1]!==null)start--;
+    while(end<rowEnd-1&&rackSlots[end+1]!==null)end++;
+    const out=[];
+    for(let i=start;i<=end;i++)if(rackSlots[i]!==null)out.push(i);
+    return out;
+  }
+
+  function selectSlot(i){
+    playSound('tile');
+    draggedIndices=[];
+    if(selectedSlotIndex===null){
+      if(rackSlots[i])selectedSlotIndex=i;
+    }else if(selectedSlotIndex===i){
+      selectedSlotIndex=null;
+    }else{
+      [rackSlots[selectedSlotIndex],rackSlots[i]]=[rackSlots[i],rackSlots[selectedSlotIndex]];
+      selectedSlotIndex=null;
+    }
+    renderRack();
+  }
+
+  // Exact-slot movement from the original VIP rack behaviour:
+  // one tile dropped on a tile swaps them; dropping on an empty slot keeps it there.
+  // Groups move together and stay inside the same 16-slot row.
+  function moveTileToExactSlot(sourceIndices,targetIndex){
+    if(!sourceIndices.length)return;
+    if(sourceIndices.length===1&&sourceIndices[0]===targetIndex)return;
+
+    const rowStart=targetIndex<16?0:16;
+    const rowEnd=rowStart+16;
+    const movingTiles=sourceIndices.map(i=>rackSlots[i]).filter(Boolean);
+    sourceIndices.forEach(i=>{rackSlots[i]=null;});
+
+    const currentTargetTile=rackSlots[targetIndex];
+    if(sourceIndices.length===1&&currentTargetTile!==null){
+      rackSlots[targetIndex]=movingTiles[0];
+      rackSlots[sourceIndices[0]]=currentTargetTile;
+    }else{
+      let cursor=targetIndex;
+      for(let i=0;i<movingTiles.length;i++){
+        if(cursor>=rowEnd)break;
+        const existing=rackSlots[cursor];
+        rackSlots[cursor]=movingTiles[i];
+        if(existing!==null){
+          let emptyIdx=-1;
+          for(let j=rowStart;j<rowEnd;j++){
+            if(rackSlots[j]===null){emptyIdx=j;break;}
+          }
+          if(emptyIdx!==-1)rackSlots[emptyIdx]=existing;
+        }
+        cursor++;
+      }
+    }
+    selectedSlotIndex=null;
+    draggedIndices=[];
+    playSound('tile');
+    renderRack();
+  }
+
+  function startTilePointer(e,idx){
+    if(e.button!==undefined&&e.button!==0)return;
+    e.preventDefault();
+    e.stopPropagation();
+    clearTimeout(longPressTimer);
+    draggedIndices=[];
+    pointerDrag={
+      idx,
+      pointerId:e.pointerId,
+      startX:e.clientX,
+      startY:e.clientY,
+      moved:false,
+      group:false,
+      longPressed:false
     };
-    const up=ev=>{clearTimeout(longPressTimer);if(pointerDrag?.moved){const el=document.elementFromPoint(ev.clientX,ev.clientY);const slot=el?.closest?.('.rack-slot');if(slot){if(!draggedIndices.length)draggedIndices=[idx];moveTileToExactSlot(draggedIndices,Number(slot.dataset.index));}}else if(draggedIndices.length>1&&draggedIndices.includes(idx)){selectedSlotIndex=idx;renderRack();}else selectSlot(idx);pointerDrag=null;$('#rack-container').classList.remove('drag-active');clearHighlights();window.removeEventListener('pointermove',move);window.removeEventListener('pointerup',up);};
-    window.addEventListener('pointermove',move);window.addEventListener('pointerup',up,{once:true});
+    const el=e.currentTarget;
+    el.classList.add('pressing');
+    try{el.setPointerCapture(e.pointerId);}catch(_){ }
+
+    longPressTimer=setTimeout(()=>{
+      if(!pointerDrag||pointerDrag.idx!==idx)return;
+      pointerDrag.longPressed=true;
+      pointerDrag.group=true;
+      draggedIndices=getContiguousBlock(idx);
+      renderRack();
+      $('#rack-container').classList.add('drag-active');
+    },220);
+
+    const move=ev=>{
+      if(!pointerDrag||ev.pointerId!==pointerDrag.pointerId)return;
+      const dx=ev.clientX-pointerDrag.startX,dy=ev.clientY-pointerDrag.startY;
+      if(Math.hypot(dx,dy)>7&&!pointerDrag.moved){
+        pointerDrag.moved=true;
+        clearTimeout(longPressTimer);
+        if(!pointerDrag.group)draggedIndices=[idx];
+        $('#rack-container').classList.add('drag-active');
+      }
+      if(pointerDrag.moved||pointerDrag.group){
+        ev.preventDefault();
+        highlightTouchTarget(ev.clientX,ev.clientY);
+      }
+    };
+
+    const up=ev=>{
+      if(!pointerDrag||ev.pointerId!==pointerDrag.pointerId)return;
+      clearTimeout(longPressTimer);
+      el.classList.remove('pressing');
+
+      const wasDrag=pointerDrag.moved||pointerDrag.group;
+      if(wasDrag){
+        const targetEl=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.('.rack-slot');
+        if(targetEl){
+          moveTileToExactSlot(draggedIndices.length?draggedIndices:[idx],Number(targetEl.dataset.index));
+        }else{
+          draggedIndices=[];
+          renderRack();
+        }
+      }else{
+        // Normal click: preserve the original select/swap behaviour.
+        selectSlot(idx);
+      }
+
+      pointerDrag=null;
+      $('#rack-container').classList.remove('drag-active');
+      clearHighlights();
+      window.removeEventListener('pointermove',move);
+      window.removeEventListener('pointerup',up);
+      window.removeEventListener('pointercancel',up);
+    };
+    window.addEventListener('pointermove',move,{passive:false});
+    window.addEventListener('pointerup',up,{passive:false});
+    window.addEventListener('pointercancel',up,{passive:false});
   }
-  function highlightTouchTarget(x,y){clearHighlights();const el=document.elementFromPoint(x,y)?.closest?.('.rack-slot');if(el)el.classList.add('hovered');}
+
+  function highlightTouchTarget(x,y){
+    clearHighlights();
+    const el=document.elementFromPoint(x,y)?.closest?.('.rack-slot');
+    if(el)el.classList.add('hovered');
+  }
 
   function syncHand(){
     const incoming=(game?.myHand||[]).map(localTile);const map=new Map(incoming.map(t=>[t.id,t]));const next=new Array(32).fill(null);
@@ -125,8 +291,169 @@
   function discardSelectedTile(){if(!canDiscard())return toast(game?.turnIndex!==mySeatIndex?'Sıra sizde değil!':'Önce taş çekmelisin.');if(selectedSlotIndex==null||!rackSlots[selectedSlotIndex])return toast('Önce atacağın taşı seç.');const t=rackSlots[selectedSlotIndex],slot=document.querySelector(`.rack-slot[data-index="${selectedSlotIndex}"]`);if(slot)animateTile(slot.getBoundingClientRect(),$('#discard-player-spot').getBoundingClientRect(),t);socket.emit('discardTile',t.id);selectedSlotIndex=null;draggedIndices=[];}
   function finishGame(){if(!canDiscard())return toast('Bitmek için sıra sende olmalı ve taş çekmiş olmalısın.');if(selectedSlotIndex==null||!rackSlots[selectedSlotIndex])return toast('Bitiş için atacağın son taşı seç veya sürükle.');const t=rackSlots[selectedSlotIndex];socket.emit('discardAndWin',t.id);}
 
-  function sortTiles(mode){const tiles=rackSlots.filter(Boolean);const key=(t)=>{const c=t.joker?game.okeySpec.color:t.color,n=t.joker?game.okeySpec.number:t.number;return {c,n};};tiles.sort((a,b)=>{const A=key(a),B=key(b);if(mode==='number')return A.n-B.n||A.c.localeCompare(B.c);return COLOR_ORDER.indexOf(A.c)-COLOR_ORDER.indexOf(B.c)||A.n-B.n;});rackSlots.fill(null);tiles.forEach((t,i)=>rackSlots[i]=t);selectedSlotIndex=null;draggedIndices=[];renderRack();playSound();}
-  function smartSort(){const tiles=rackSlots.filter(Boolean);const score=t=>{const c=t.joker?game.okeySpec.color:t.color,n=t.joker?game.okeySpec.number:t.number;if(t.joker)return 999;let s=0;tiles.forEach(o=>{if(o.id===t.id)return;const oc=o.joker?game.okeySpec.color:o.color,on=o.joker?game.okeySpec.number:o.number;if(c===oc&&Math.abs(n-on)<=2)s+=3;if(n===on&&c!==oc)s+=2;});return s;};tiles.sort((a,b)=>score(b)-score(a)||((a.number||0)-(b.number||0)));rackSlots.fill(null);tiles.forEach((t,i)=>rackSlots[i]=t);selectedSlotIndex=null;draggedIndices=[];renderRack();playSound();}
+  function sortTiles(mode){
+    const tiles=rackSlots.filter(Boolean);
+    const key=t=>{
+      const c=t.joker?game.okeySpec.color:t.color;
+      const n=t.joker?game.okeySpec.number:t.number;
+      return {c,n};
+    };
+    tiles.sort((a,b)=>{
+      const A=key(a),B=key(b);
+      if(mode==='number')return A.n-B.n||COLOR_ORDER.indexOf(A.c)-COLOR_ORDER.indexOf(B.c);
+      return COLOR_ORDER.indexOf(A.c)-COLOR_ORDER.indexOf(B.c)||A.n-B.n;
+    });
+    rackSlots.fill(null);
+    tiles.forEach((t,i)=>rackSlots[i]=t);
+    selectedSlotIndex=null;
+    draggedIndices=[];
+    renderRack();
+    playSound('tile');
+  }
+
+  // The real VIP smart arranger: find the largest set of non-overlapping
+  // valid runs/sets, then place those groups with a slot gap between them.
+  function smartSort(){
+    const tiles=rackSlots.filter(Boolean);
+    if(!tiles.length)return;
+
+    const items=tiles.map(t=>({
+      tile:t,
+      color:t.joker?game.okeySpec.color:t.color,
+      value:t.joker?game.okeySpec.number:t.number,
+      isOkey:isOkey(t),
+      id:t.id
+    }));
+
+    const best=findBestPerCombination(items);
+    const leftovers=organizeRemaining(best.remaining);
+
+    rackSlots.fill(null);
+    let slotIdx=0;
+
+    best.pers.forEach(per=>{
+      if(slotIdx+per.length>32)return;
+      per.forEach(item=>rackSlots[slotIdx++]=item.tile);
+      slotIdx++;
+    });
+
+    leftovers.forEach(group=>{
+      if(slotIdx<16&&slotIdx+group.length>16)slotIdx=16;
+      if(slotIdx+group.length<=32){
+        group.forEach(item=>rackSlots[slotIdx++]=item.tile);
+        slotIdx++;
+      }
+    });
+
+    selectedSlotIndex=null;
+    draggedIndices=[];
+    playSound('tile');
+    renderRack();
+  }
+
+  function findBestPerCombination(items){
+    const allValidPers=[];
+    const byColor={};
+    COLOR_ORDER.forEach(c=>byColor[c]=[]);
+    items.forEach(it=>{if(byColor[it.color])byColor[it.color].push(it);});
+
+    COLOR_ORDER.forEach(col=>{
+      const list=byColor[col].slice().sort((a,b)=>a.value-b.value);
+      function findRuns(startIndex,currentRun){
+        if(currentRun.length>=3)allValidPers.push([...currentRun]);
+        if(currentRun.length>=5)return;
+        const lastVal=currentRun[currentRun.length-1].value;
+        for(let i=startIndex;i<list.length;i++){
+          if(list[i].value===lastVal+1)findRuns(i+1,[...currentRun,list[i]]);
+        }
+      }
+      for(let i=0;i<list.length;i++)findRuns(i+1,[list[i]]);
+      const tile12=list.find(t=>t.value===12),tile13=list.find(t=>t.value===13),tile1=list.find(t=>t.value===1);
+      if(tile12&&tile13&&tile1)allValidPers.push([tile12,tile13,tile1]);
+    });
+
+    for(let val=1;val<=13;val++){
+      const sameVal=items.filter(it=>it.value===val);
+      const colorMap={};
+      sameVal.forEach(it=>{if(!colorMap[it.color])colorMap[it.color]=[];colorMap[it.color].push(it);});
+      const colors=Object.keys(colorMap);
+      if(colors.length>=3){
+        function combos(colorIdx,current){
+          if(current.length>=3)allValidPers.push([...current]);
+          if(current.length===4||colorIdx>=colors.length)return;
+          const c=colors[colorIdx];
+          colorMap[c].forEach(tile=>combos(colorIdx+1,[...current,tile]));
+          combos(colorIdx+1,current);
+        }
+        combos(0,[]);
+      }
+    }
+
+    let maxTiles=-1,bestPers=[];
+    const LIMIT=16;
+    if(allValidPers.length<=LIMIT){
+      function search(idx,chosen,used){
+        const count=chosen.reduce((n,p)=>n+p.length,0);
+        if(count>maxTiles){maxTiles=count;bestPers=[...chosen];}
+        if(idx>=allValidPers.length)return;
+        search(idx+1,chosen,used);
+        const p=allValidPers[idx];
+        if(p.every(it=>!used.has(it.id))){
+          const next=new Set(used);p.forEach(it=>next.add(it.id));
+          search(idx+1,[...chosen,p],next);
+        }
+      }
+      search(0,[],new Set());
+    }else{
+      const sorted=[...allValidPers].sort((a,b)=>b.length-a.length);
+      const used=new Set();
+      sorted.forEach(p=>{
+        if(p.every(it=>!used.has(it.id))){bestPers.push(p);p.forEach(it=>used.add(it.id));}
+      });
+      maxTiles=bestPers.reduce((n,p)=>n+p.length,0);
+    }
+
+    const usedIds=new Set();
+    bestPers.forEach(p=>p.forEach(it=>usedIds.add(it.id)));
+    const remaining=items.filter(it=>!usedIds.has(it.id));
+    return {pers:bestPers,remaining};
+  }
+
+  function organizeRemaining(remaining){
+    const groups=[],used=new Set();
+    for(let i=0;i<remaining.length;i++){
+      if(used.has(remaining[i].id))continue;
+      for(let j=i+1;j<remaining.length;j++){
+        if(used.has(remaining[j].id))continue;
+        if(remaining[i].color===remaining[j].color&&remaining[i].value===remaining[j].value){
+          groups.push([remaining[i],remaining[j]]);used.add(remaining[i].id);used.add(remaining[j].id);break;
+        }
+      }
+    }
+    for(let i=0;i<remaining.length;i++){
+      if(used.has(remaining[i].id))continue;
+      for(let j=0;j<remaining.length;j++){
+        if(i===j||used.has(remaining[j].id))continue;
+        if(remaining[i].color===remaining[j].color&&remaining[j].value===remaining[i].value+1){
+          groups.push([remaining[i],remaining[j]]);used.add(remaining[i].id);used.add(remaining[j].id);break;
+        }
+      }
+    }
+    for(let i=0;i<remaining.length;i++){
+      if(used.has(remaining[i].id))continue;
+      for(let j=i+1;j<remaining.length;j++){
+        if(used.has(remaining[j].id))continue;
+        if(remaining[i].value===remaining[j].value&&remaining[i].color!==remaining[j].color){
+          groups.push([remaining[i],remaining[j]]);used.add(remaining[i].id);used.add(remaining[j].id);break;
+        }
+      }
+    }
+    const singles=remaining.filter(it=>!used.has(it.id));
+    singles.sort((a,b)=>COLOR_ORDER.indexOf(a.color)-COLOR_ORDER.indexOf(b.color)||a.value-b.value);
+    singles.forEach(s=>groups.push([s]));
+    return groups;
+  }
+
   window.sortSeri=smartSort;window.sortByColor=()=>sortTiles('color');window.sortByNumber=()=>sortTiles('number');window.drawFromDeck=drawFromDeck;window.drawFromLeftDiscard=drawFromLeftDiscard;window.discardSelectedTile=discardSelectedTile;window.finishGame=finishGame;
 
   function setupInteractions(){
