@@ -1,420 +1,48 @@
-const path = require('path');
-const express = require('express');
-const http = require('http');
-const { Server } = require('socket.io');
-const { startNewHand, validateWinningHand } = require('./gameLogic');
+const path=require('path');
+const express=require('express');
+const http=require('http');
+const {Server}=require('socket.io');
+const {startNewHand,validateWinningHand,validateHand14,isOkeyTile}=require('./gameLogic');
+const app=express(); const server=http.createServer(app); const io=new Server(server);
+app.use(express.static(path.join(__dirname,'public')));
+const rooms={};
+const BOT_NAMES=['Ahmet Bot','Zeynep Bot','Mehmet Bot','Elif Bot','Can Bot','Deniz Bot','Ayşe Bot','Barış Bot'];
+function genRoomCode(){const chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';let c;do{c=Array.from({length:5},()=>chars[Math.floor(Math.random()*chars.length)]).join('')}while(rooms[c]);return c;}
+function shuffleArr(a){a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;}
+function publicRoomState(room){return{code:room.code,hostId:room.hostId,quick:!!room.quick,players:Object.values(room.players).map(p=>({id:p.id,name:p.name,seat:p.seat,spectator:p.spectator,bot:!!p.bot})),seats:room.seats,gameActive:!!room.game&&!room.game.finished};}
+function personalGameView(room,id){const g=room.game;if(!g)return null;const seatOfPlayer={};room.seats.forEach((pid,i)=>{if(pid)seatOfPlayer[pid]=i;});const otherCounts={};for(const [pid,h] of Object.entries(g.hands))otherCounts[pid]=h.length;return{indicator:g.indicator,okeySpec:g.okeySpec,discardTop:g.discardPile.length?g.discardPile[g.discardPile.length-1]:null,discardCount:g.discardPile.length,discardsBySeat:g.discardBySeat||[null,null,null,null],deckCount:g.deck.length,turnIndex:g.turnIndex,dealerIndex:g.dealerIndex,phase:g.phase,finished:g.finished,winnerId:g.winnerId,myHand:g.hands[id]||[],otherCounts,seatOfPlayer,turnStartedAt:g.turnStartedAt,turnDuration:g.turnDuration};}
+function broadcastRoom(room){io.to(room.code).emit('roomUpdate',publicRoomState(room));}
+function broadcastGame(room){for(const pid of Object.keys(room.players))io.to(pid).emit('gameUpdate',personalGameView(room,pid));}
+function broadcastOnlineCount(){io.emit('onlineCount',io.engine.clientsCount);}
+function setTurn(room){room.game.turnStartedAt=Date.now();room.game.turnDuration=20000;}
+function endDraw(room){const g=room.game;if(!g||g.finished)return;g.finished=true;g.winnerId=null;broadcastGame(room);io.to(room.code).emit('chatMsg',{system:true,text:'Deste ve alınabilecek atık taş kalmadı. El berabere bitti.'});}
+function scheduleTurnTimeout(room){const g=room.game;if(!g||g.finished)return;const started=g.turnStartedAt;const seat=g.turnIndex;setTimeout(()=>{if(!rooms[room.code]||!room.game||room.game.finished)return;if(room.game.turnIndex!==seat||room.game.turnStartedAt!==started)return;if(room.game.phase==='draw'){const pid=room.seats[seat];const prev=(seat+3)%4;if(room.game.deck.length)doDraw(room,pid,'deck');else if(room.game.discardBySeat?.[prev])doDraw(room,pid,'discard');else return endDraw(room);const hand=room.game.hands[pid];if(hand?.length)doDiscard(room,pid,hand[Math.floor(Math.random()*hand.length)].id);io.to(room.code).emit('chatMsg',{system:true,text:`${room.players[pid]?.name} süresini doldurdu; hamle otomatik yapıldı.`});}else{const pid=room.seats[seat],hand=room.game.hands[pid];if(hand?.length)doDiscard(room,pid,hand[Math.floor(Math.random()*hand.length)].id);io.to(room.code).emit('chatMsg',{system:true,text:`${room.players[pid]?.name} süresini doldurdu; taş otomatik atıldı.`});}},g.turnDuration+100);}
 
-const app = express();
-const server = http.createServer(app);
-const io = new Server(server);
 
-app.use(express.static(path.join(__dirname, 'public')));
+function doDraw(room,pid,source){const g=room.game;if(!g||g.finished)return false;let tile=null;if(source==='discard'){const prevSeat=(g.turnIndex+3)%4;const expected=g.discardBySeat?.[prevSeat];if(!expected||!g.discardPile.length)return false;tile=g.discardPile.pop();if(tile.id!==expected.id){g.discardPile.push(tile);return false;}g.discardBySeat[prevSeat]=null;}else{if(!g.deck.length)return false;tile=g.deck.pop();}g.hands[pid].push(tile);g.phase='discard';broadcastGame(room);return true;}
+function doDiscard(room,pid,tileId){const g=room.game;if(!g||g.finished||g.phase!=='discard')return false;const hand=g.hands[pid];if(!hand?.length)return false;const idx=hand.findIndex(t=>t.id===tileId);if(idx<0)return false;const [tile]=hand.splice(idx,1);g.discardPile.push(tile);const seat=room.players[pid]?.seat;if(seat!==null&&seat!==undefined)g.discardBySeat[seat]=tile;g.turnIndex=(g.turnIndex+1)%4;g.phase='draw';setTurn(room);broadcastGame(room);scheduleBotIfNeeded(room);scheduleTurnTimeout(room);return true;}
+function finishByOkeyDiscard(room,pid,tileId){const g=room.game;if(!g||g.finished||g.phase!=='discard')return false;const hand=g.hands[pid];if(!hand||hand.length!==15)return false;const idx=hand.findIndex(t=>t.id===tileId);if(idx<0)return false;const tile=hand[idx];const remaining=hand.filter((_,i)=>i!==idx);if(!validateHand14(remaining,g.okeySpec))return false;hand.splice(idx,1);g.discardPile.push(tile);const seat=room.players[pid]?.seat;if(seat!==null&&seat!==undefined)g.discardBySeat[seat]=tile;g.finished=true;g.winnerId=pid;broadcastGame(room);io.to(room.code).emit('chatMsg',{system:true,text:`${room.players[pid]?.name} OKEY atarak eli bitirdi! 🏆`});return true;}
+function scheduleBotIfNeeded(room){if(!room.game||room.game.finished)return;const g=room.game;const seat=g.turnIndex,pid=room.seats[seat],p=room.players[pid];if(!p?.bot)return;const delay=650+Math.random()*850;setTimeout(()=>{if(!rooms[room.code]||!room.game||room.game.finished||room.game.turnIndex!==seat)return;if(room.game.phase==='draw'){const prevSeat=(seat+3)%4;const useDiscard=!!room.game.discardBySeat?.[prevSeat]&&Math.random()<.18;doDraw(room,pid,useDiscard?'discard':'deck');scheduleBotIfNeeded(room);}else{const hand=room.game.hands[pid];if(hand?.length)doDiscard(room,pid,hand[Math.floor(Math.random()*hand.length)].id);}},delay);}
+function joinRoomInternal(socket,code,name){const room=rooms[code];socket.join(code);socket.data.roomCode=code;room.players[socket.id]={id:socket.id,name:(name||'Oyuncu').slice(0,20),seat:null,spectator:true};socket.emit('joinedRoom',{code,quick:false});broadcastRoom(room);}
 
-/**
- * rooms[code] = {
- *   code, hostId, quick: bool,
- *   players: { [id]: { id, name, seat: 0-3|null, spectator: bool, bot?: bool } },
- *   seats: [id|null, id|null, id|null, id|null],
- *   game: null | gameState
- * }
- */
-const rooms = {};
-
-const BOT_NAMES = ['Ahmet Bot', 'Zeynep Bot', 'Mehmet Bot', 'Elif Bot', 'Can Bot', 'Deniz Bot', 'Ayşe Bot', 'Barış Bot'];
-
-function genRoomCode() {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let code;
-  do {
-    code = Array.from({ length: 5 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  } while (rooms[code]);
-  return code;
-}
-
-function shuffleArr(arr) {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-
-function publicRoomState(room) {
-  return {
-    code: room.code,
-    hostId: room.hostId,
-    quick: !!room.quick,
-    players: Object.values(room.players).map(p => ({ id: p.id, name: p.name, seat: p.seat, spectator: p.spectator, bot: !!p.bot })),
-    seats: room.seats,
-    gameActive: !!room.game && !room.game.finished
-  };
-}
-
-/** Oyuncuya özel görünüm: kendi eli açık, diğerlerinin sadece taş sayısı görünür. */
-function personalGameView(room, id) {
-  const g = room.game;
-  if (!g) return null;
-  const seatOfPlayer = {};
-  room.seats.forEach((pid, idx) => { if (pid) seatOfPlayer[pid] = idx; });
-
-  const otherCounts = {};
-  for (const [pid, hand] of Object.entries(g.hands)) {
-    otherCounts[pid] = hand.length;
-  }
-
-  return {
-    indicator: g.indicator,
-    okeySpec: g.okeySpec,
-    discardTop: g.discardPile.length ? g.discardPile[g.discardPile.length - 1] : null,
-    discardCount: g.discardPile.length,
-    deckCount: g.deck.length,
-    turnIndex: g.turnIndex,
-    dealerIndex: g.dealerIndex,
-    phase: g.phase,
-    finished: g.finished,
-    winnerId: g.winnerId,
-    discardsBySeat: g.discardBySeat || [null, null, null, null],
-    myHand: g.hands[id] || [],
-    otherCounts,
-    seatOfPlayer
-  };
-}
-
-function broadcastRoom(room) {
-  io.to(room.code).emit('roomUpdate', publicRoomState(room));
-}
-
-function broadcastGame(room) {
-  for (const pid of Object.keys(room.players)) {
-    io.to(pid).emit('gameUpdate', personalGameView(room, pid));
-  }
-}
-
-function broadcastOnlineCount() {
-  io.emit('onlineCount', io.engine.clientsCount);
-}
-
-// ---------- shared draw / discard (used by both real players and bots) ----------
-function doDraw(room, pid, source) {
-  const g = room.game;
-  if (!g || g.finished) return false;
-  let actualSource = source;
-  if (actualSource === 'discard' && g.discardPile.length === 0) actualSource = 'deck';
-  let tile;
-  if (actualSource === 'discard') {
-    tile = g.discardPile.pop();
-    if (tile && Array.isArray(g.discardBySeat)) {
-      const ownerSeat = g.discardBySeat.findIndex(t => t && t.id === tile.id);
-      if (ownerSeat !== -1) g.discardBySeat[ownerSeat] = null;
-    }
-  } else {
-    if (g.deck.length === 0) return false;
-    tile = g.deck.pop();
-  }
-  g.hands[pid].push(tile);
-  g.phase = 'discard';
-  broadcastGame(room);
-  return true;
-}
-
-function doDiscard(room, pid, tileId) {
-  const g = room.game;
-  if (!g || g.finished) return false;
-  const hand = g.hands[pid];
-  if (!hand || !hand.length) return false;
-  let idx = tileId ? hand.findIndex(t => t.id === tileId) : Math.floor(Math.random() * hand.length);
-  if (idx === -1) idx = Math.floor(Math.random() * hand.length);
-  const [tile] = hand.splice(idx, 1);
-  g.discardPile.push(tile);
-  const seat = room.players[pid]?.seat;
-  if (Array.isArray(g.discardBySeat) && seat !== null && seat !== undefined) {
-    g.discardBySeat[seat] = tile;
-  }
-  g.turnIndex = (g.turnIndex + 1) % 4;
-  g.phase = 'draw';
-  broadcastGame(room);
-  scheduleBotIfNeeded(room);
-  return true;
-}
-
-// ---------- bot AI: fully random legal moves ----------
-function scheduleBotIfNeeded(room) {
-  if (!room.game || room.game.finished) return;
-  const g = room.game;
-  const turnSeatIdx = g.turnIndex;
-  const pid = room.seats[turnSeatIdx];
-  const player = room.players[pid];
-  if (!player || !player.bot) return;
-
-  const delay = 550 + Math.random() * 900;
-  setTimeout(() => {
-    if (!rooms[room.code] || !room.game || room.game.finished) return;
-    if (room.game.turnIndex !== turnSeatIdx) return; // stale timer, turn already moved on
-    if (room.game.phase === 'draw') {
-      const useDiscard = Math.random() < 0.12 && room.game.discardPile.length > 0;
-      doDraw(room, pid, useDiscard ? 'discard' : 'deck');
-      scheduleBotIfNeeded(room); // now in discard phase, chain the next step
-    } else if (room.game.phase === 'discard') {
-      doDiscard(room, pid, null); // null => bot discards a random tile
-    }
-  }, delay);
-}
-
-io.on('connection', socket => {
-  broadcastOnlineCount();
-
-  socket.on('createRoom', ({ name }) => {
-    const code = genRoomCode();
-    rooms[code] = {
-      code,
-      hostId: socket.id,
-      quick: false,
-      players: {},
-      seats: [null, null, null, null],
-      game: null
-    };
-    joinRoomInternal(socket, code, name);
-  });
-
-  socket.on('joinRoom', ({ code, name }) => {
-    const room = rooms[(code || '').toUpperCase()];
-    if (!room) {
-      socket.emit('errorMsg', 'Bu kodla bir oda bulunamadı.');
-      return;
-    }
-    if (Object.keys(room.players).filter(id => !room.players[id].bot).length >= 8) {
-      socket.emit('errorMsg', 'Oda dolu (en fazla 8 kişi).');
-      return;
-    }
-    joinRoomInternal(socket, room.code, name);
-  });
-
-  socket.on('quickPlay', ({ name }) => {
-    const code = genRoomCode();
-    const room = {
-      code,
-      hostId: socket.id,
-      quick: true,
-      players: {},
-      seats: [null, null, null, null],
-      game: null
-    };
-    rooms[code] = room;
-    socket.join(code);
-    socket.data.roomCode = code;
-
-    room.players[socket.id] = { id: socket.id, name: (name || 'Oyuncu').slice(0, 20), seat: 0, spectator: false };
-    room.seats[0] = socket.id;
-
-    const botNames = shuffleArr(BOT_NAMES).slice(0, 3);
-    for (let i = 1; i < 4; i++) {
-      const botId = 'bot-' + Math.random().toString(36).slice(2, 9);
-      room.players[botId] = { id: botId, name: botNames[i - 1], seat: i, spectator: false, bot: true };
-      room.seats[i] = botId;
-    }
-
-    socket.emit('joinedRoom', { code, quick: true });
-    room.game = startNewHand(room.seats);
-    broadcastRoom(room);
-    broadcastGame(room);
-    scheduleBotIfNeeded(room);
-  });
-
-  function joinRoomInternal(socket, code, name) {
-    const room = rooms[code];
-    socket.join(code);
-    socket.data.roomCode = code;
-    room.players[socket.id] = {
-      id: socket.id,
-      name: (name || 'Oyuncu').slice(0, 20),
-      seat: null,
-      spectator: true
-    };
-    socket.emit('joinedRoom', { code, quick: false });
-    broadcastRoom(room);
-    const others = Object.keys(room.players).filter(id => id !== socket.id && !room.players[id].bot);
-    socket.emit('voicePeers', others);
-  }
-
-  socket.on('chooseSeat', seatIndex => {
-    const room = rooms[socket.data.roomCode];
-    if (!room) return;
-    if (seatIndex === null) {
-      const curSeat = room.players[socket.id].seat;
-      if (curSeat !== null) room.seats[curSeat] = null;
-      room.players[socket.id].seat = null;
-      room.players[socket.id].spectator = true;
-      broadcastRoom(room);
-      return;
-    }
-    if (seatIndex < 0 || seatIndex > 3) return;
-    if (room.seats[seatIndex] && room.seats[seatIndex] !== socket.id) {
-      socket.emit('errorMsg', 'Bu koltuk dolu.');
-      return;
-    }
-    const curSeat = room.players[socket.id].seat;
-    if (curSeat !== null) room.seats[curSeat] = null;
-    room.seats[seatIndex] = socket.id;
-    room.players[socket.id].seat = seatIndex;
-    room.players[socket.id].spectator = false;
-    broadcastRoom(room);
-  });
-
-  socket.on('startGame', () => {
-    const room = rooms[socket.data.roomCode];
-    if (!room) return;
-    if (room.hostId !== socket.id) {
-      socket.emit('errorMsg', 'Sadece oda kurucusu oyunu başlatabilir.');
-      return;
-    }
-    const seats = room.seats;
-    if (seats.filter(Boolean).length !== 4) {
-      socket.emit('errorMsg', 'Oyunu başlatmak için 4 koltuğun da dolu olması gerekir.');
-      return;
-    }
-    room.game = startNewHand(seats);
-    broadcastRoom(room);
-    broadcastGame(room);
-    scheduleBotIfNeeded(room);
-  });
-
-  socket.on('drawTile', source => {
-    const room = rooms[socket.data.roomCode];
-    if (!room || !room.game || room.game.finished) return;
-    const g = room.game;
-    const seat = room.players[socket.id]?.seat;
-    if (seat === null || seat === undefined) return;
-    if (g.turnIndex !== seat || g.phase !== 'draw') {
-      socket.emit('errorMsg', 'Sıra sende değil.');
-      return;
-    }
-    if (source === 'discard' && g.discardPile.length === 0) return;
-    if (source === 'deck' && g.deck.length === 0) {
-      socket.emit('errorMsg', 'Kupada taş kalmadı.');
-      return;
-    }
-    doDraw(room, socket.id, source);
-  });
-
-  socket.on('discardTile', tileId => {
-    const room = rooms[socket.data.roomCode];
-    if (!room || !room.game || room.game.finished) return;
-    const g = room.game;
-    const seat = room.players[socket.id]?.seat;
-    if (seat === null || seat === undefined) return;
-    if (g.turnIndex !== seat || g.phase !== 'discard') {
-      socket.emit('errorMsg', 'Sıra sende değil.');
-      return;
-    }
-    const hand = g.hands[socket.id];
-    if (!hand.some(t => t.id === tileId)) return;
-    doDiscard(room, socket.id, tileId);
-  });
-
-  socket.on('declareWin', () => {
-    const room = rooms[socket.data.roomCode];
-    if (!room || !room.game || room.game.finished) return;
-    const g = room.game;
-    const seat = room.players[socket.id]?.seat;
-    if (seat === null || seat === undefined) return;
-    const hand = g.hands[socket.id];
-    if (hand.length !== 15) {
-      socket.emit('errorMsg', 'Bitiş açıklaman için elinde 15 taş olmalı (taş çektikten sonra dene).');
-      return;
-    }
-    const valid = validateWinningHand(hand, g.okeySpec);
-    if (valid) {
-      g.finished = true;
-      g.winnerId = socket.id;
-      broadcastGame(room);
-      io.to(room.code).emit('chatMsg', { system: true, text: `${room.players[socket.id].name} eli bitirdi! 🎉` });
-    } else {
-      socket.emit('errorMsg', 'Bu el geçerli bir bitiş değil (otomatik kontrol). İstersen "Elimi Açıyorum" ile masaya danış.');
-    }
-  });
-
-  socket.on('claimManualWin', () => {
-    const room = rooms[socket.data.roomCode];
-    if (!room || !room.game || room.game.finished) return;
-    const g = room.game;
-    const hand = g.hands[socket.id];
-    io.to(room.code).emit('manualWinClaim', {
-      claimantId: socket.id,
-      claimantName: room.players[socket.id]?.name,
-      hand
-    });
-  });
-
-  socket.on('resolveManualWin', ({ claimantId, accepted }) => {
-    const room = rooms[socket.data.roomCode];
-    if (!room || !room.game || room.game.finished) return;
-    if (room.hostId !== socket.id) return;
-    if (accepted) {
-      room.game.finished = true;
-      room.game.winnerId = claimantId;
-      broadcastGame(room);
-      io.to(room.code).emit('chatMsg', { system: true, text: `${room.players[claimantId]?.name} eli bitirdi (masa onayıyla)! 🎉` });
-    } else {
-      io.to(room.code).emit('chatMsg', { system: true, text: `${room.players[claimantId]?.name} elinin bitişi reddedildi, oyun devam ediyor.` });
-    }
-  });
-
-  socket.on('newHand', () => {
-    const room = rooms[socket.data.roomCode];
-    if (!room) return;
-    if (room.hostId !== socket.id) return;
-    if (room.seats.filter(Boolean).length !== 4) return;
-    room.game = startNewHand(room.seats);
-    broadcastRoom(room);
-    broadcastGame(room);
-    scheduleBotIfNeeded(room);
-  });
-
-  socket.on('chatMsg', text => {
-    const room = rooms[socket.data.roomCode];
-    if (!room) return;
-    const name = room.players[socket.id]?.name || 'Oyuncu';
-    io.to(room.code).emit('chatMsg', { system: false, name, text: String(text).slice(0, 500) });
-  });
-
-  // --- WebRTC sesli sohbet sinyalleşmesi (basit mesh, sunucu sadece aracı) ---
-  socket.on('voiceJoin', () => {
-    const room = rooms[socket.data.roomCode];
-    if (!room) return;
-    socket.to(room.code).emit('voicePeerJoined', socket.id);
-  });
-  socket.on('voiceLeave', () => {
-    const room = rooms[socket.data.roomCode];
-    if (!room) return;
-    socket.to(room.code).emit('voicePeerLeft', socket.id);
-  });
-  socket.on('voiceSignal', ({ to, signal }) => {
-    io.to(to).emit('voiceSignal', { from: socket.id, signal });
-  });
-
-  socket.on('disconnect', () => {
-    broadcastOnlineCount();
-    const code = socket.data.roomCode;
-    const room = rooms[code];
-    if (!room) return;
-    const seat = room.players[socket.id]?.seat;
-    if (seat !== null && seat !== undefined) room.seats[seat] = null;
-    delete room.players[socket.id];
-    socket.to(code).emit('voicePeerLeft', socket.id);
-
-    const remainingHumans = Object.values(room.players).filter(p => !p.bot);
-    if (remainingHumans.length === 0) {
-      delete rooms[code];
-      return;
-    }
-    if (room.hostId === socket.id) {
-      room.hostId = remainingHumans[0].id;
-    }
-    broadcastRoom(room);
-    if (room.game) broadcastGame(room);
-  });
+io.on('connection',socket=>{
+ broadcastOnlineCount();
+ socket.on('createRoom',({name})=>{const code=genRoomCode();rooms[code]={code,hostId:socket.id,quick:false,players:{},seats:[null,null,null,null],game:null};joinRoomInternal(socket,code,name);});
+ socket.on('joinRoom',({code,name})=>{const room=rooms[(code||'').toUpperCase()];if(!room)return socket.emit('errorMsg','Bu kodla bir oda bulunamadı.');if(Object.values(room.players).filter(p=>!p.bot).length>=8)return socket.emit('errorMsg','Oda dolu.');joinRoomInternal(socket,room.code,name);});
+ socket.on('quickPlay',({name})=>{const code=genRoomCode(),room={code,hostId:socket.id,quick:true,players:{},seats:[null,null,null,null],game:null};rooms[code]=room;socket.join(code);socket.data.roomCode=code;room.players[socket.id]={id:socket.id,name:(name||'Oyuncu').slice(0,20),seat:0,spectator:false};room.seats[0]=socket.id;const names=shuffleArr(BOT_NAMES).slice(0,3);for(let i=1;i<4;i++){const botId='bot-'+Math.random().toString(36).slice(2,9);room.players[botId]={id:botId,name:names[i-1],seat:i,spectator:false,bot:true};room.seats[i]=botId;}socket.emit('joinedRoom',{code,quick:true});room.game=startNewHand(room.seats);broadcastRoom(room);broadcastGame(room);scheduleBotIfNeeded(room);scheduleTurnTimeout(room);});
+ socket.on('chooseSeat',seatIndex=>{const room=rooms[socket.data.roomCode];if(!room||!room.players[socket.id])return;if(seatIndex===null){const cur=room.players[socket.id].seat;if(cur!==null)room.seats[cur]=null;room.players[socket.id].seat=null;room.players[socket.id].spectator=true;return broadcastRoom(room);}if(seatIndex<0||seatIndex>3)return;if(room.seats[seatIndex]&&room.seats[seatIndex]!==socket.id)return socket.emit('errorMsg','Bu koltuk dolu.');const cur=room.players[socket.id].seat;if(cur!==null)room.seats[cur]=null;room.seats[seatIndex]=socket.id;room.players[socket.id].seat=seatIndex;room.players[socket.id].spectator=false;broadcastRoom(room);});
+ socket.on('startGame',()=>{const room=rooms[socket.data.roomCode];if(!room)return;if(room.hostId!==socket.id)return socket.emit('errorMsg','Sadece oda kurucusu oyunu başlatabilir.');if(room.seats.filter(Boolean).length!==4)return socket.emit('errorMsg','4 koltuğun da dolu olması gerekir.');room.game=startNewHand(room.seats);broadcastRoom(room);broadcastGame(room);scheduleBotIfNeeded(room);scheduleTurnTimeout(room);});
+ socket.on('drawTile',source=>{const room=rooms[socket.data.roomCode],g=room?.game;if(!g||g.finished)return;const seat=room.players[socket.id]?.seat;if(seat===null||seat===undefined||g.turnIndex!==seat||g.phase!=='draw')return socket.emit('errorMsg','Şu an taş çekme sırası sende değil.');if(source==='deck'&&!g.deck.length)return socket.emit('errorMsg','Kupada taş kalmadı.');if(source==='discard'&&!(g.discardBySeat?.[(seat+3)%4]))return socket.emit('errorMsg','Solundaki oyuncunun atığı yok.');doDraw(room,socket.id,source);});
+ socket.on('discardTile',tileId=>{const room=rooms[socket.data.roomCode],g=room?.game;if(!g||g.finished)return;const seat=room.players[socket.id]?.seat;if(seat===null||seat===undefined||g.turnIndex!==seat||g.phase!=='discard')return socket.emit('errorMsg','Şu an taş atma sırası sende değil.');if(!g.hands[socket.id]?.some(t=>t.id===tileId))return;doDiscard(room,socket.id,tileId);});
+ socket.on('declareWin',()=>{const room=rooms[socket.data.roomCode],g=room?.game;if(!g||g.finished)return;const seat=room.players[socket.id]?.seat;if(seat===null||seat===undefined||g.turnIndex!==seat||g.phase!=='discard')return socket.emit('errorMsg','Bitiş için sıra sende ve taş çekmiş olmalısın.');const hand=g.hands[socket.id];if(hand.length!==15)return socket.emit('errorMsg','Bitiş için elinde 15 taş olmalı.');if(!validateWinningHand(hand,g.okeySpec))return socket.emit('errorMsg','Elin henüz geçerli bir bitiş oluşturmuyor.');g.finished=true;g.winnerId=socket.id;broadcastGame(room);io.to(room.code).emit('chatMsg',{system:true,text:`${room.players[socket.id].name} eli bitirdi! 🎉`});});
+ socket.on('discardAndWin',tileId=>{const room=rooms[socket.data.roomCode];if(!room||!room.game)return;if(!finishByOkeyDiscard(room,socket.id,tileId))socket.emit('errorMsg','Seçtiğin taşı atarak kalan 14 taşla geçerli bir el oluşturamıyorsun.');});
+ socket.on('claimManualWin',()=>{const room=rooms[socket.data.roomCode],g=room?.game;if(!g||g.finished)return;const hand=g.hands[socket.id];io.to(room.code).emit('manualWinClaim',{claimantId:socket.id,claimantName:room.players[socket.id]?.name,hand});});
+ socket.on('resolveManualWin',({claimantId,accepted})=>{const room=rooms[socket.data.roomCode],g=room?.game;if(!room||!g||g.finished||room.hostId!==socket.id)return;if(accepted){g.finished=true;g.winnerId=claimantId;broadcastGame(room);io.to(room.code).emit('chatMsg',{system:true,text:`${room.players[claimantId]?.name} eli masa onayıyla bitirdi! 🏆`});}else io.to(room.code).emit('chatMsg',{system:true,text:`${room.players[claimantId]?.name} bitişi reddedildi.`});});
+ socket.on('newHand',()=>{const room=rooms[socket.data.roomCode];if(!room||room.hostId!==socket.id||room.seats.filter(Boolean).length!==4)return;room.game=startNewHand(room.seats);broadcastRoom(room);broadcastGame(room);scheduleBotIfNeeded(room);scheduleTurnTimeout(room);});
+ socket.on('chatMsg',text=>{const room=rooms[socket.data.roomCode];if(!room)return;io.to(room.code).emit('chatMsg',{system:false,name:room.players[socket.id]?.name||'Oyuncu',text:String(text).slice(0,500)});});
+ socket.on('voiceJoin',()=>{const room=rooms[socket.data.roomCode];if(room)socket.to(room.code).emit('voicePeerJoined',socket.id);});
+ socket.on('voiceLeave',()=>{const room=rooms[socket.data.roomCode];if(room)socket.to(room.code).emit('voicePeerLeft',socket.id);});
+ socket.on('voiceSignal',({to,signal})=>io.to(to).emit('voiceSignal',{from:socket.id,signal}));
+ socket.on('disconnect',()=>{broadcastOnlineCount();const code=socket.data.roomCode,room=rooms[code];if(!room)return;const seat=room.players[socket.id]?.seat;if(seat!==null&&seat!==undefined)room.seats[seat]=null;delete room.players[socket.id];socket.to(code).emit('voicePeerLeft',socket.id);const humans=Object.values(room.players).filter(p=>!p.bot);if(!humans.length){delete rooms[code];return;}if(room.hostId===socket.id)room.hostId=humans[0].id;broadcastRoom(room);if(room.game)broadcastGame(room);});
 });
-
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Okey sunucusu ${PORT} portunda çalışıyor`));
+const PORT=process.env.PORT||3000;server.listen(PORT,()=>console.log(`Okey sunucusu ${PORT} portunda çalışıyor`));
