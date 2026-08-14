@@ -303,14 +303,22 @@
     if(!srcRect||!dstRect){if(onComplete)onComplete();return;}
     const clone=isClosed?createClosedTileElement():createTileElement(tileData);
     if(!clone){if(onComplete)onComplete();return;}
+    clone.classList.add('flying-tile');
     clone.style.position='fixed';
     clone.style.top=srcRect.top+'px';clone.style.left=srcRect.left+'px';
     clone.style.width=srcRect.width+'px';clone.style.height=srcRect.height+'px';
-    clone.style.zIndex='99999';clone.style.pointerEvents='none';clone.style.transition='all .32s cubic-bezier(.25,1,.5,1)';clone.style.margin='0';clone.style.boxShadow='0 8px 20px rgba(0,0,0,.6)';
-    document.body.appendChild(clone);clone.getBoundingClientRect();
-    clone.style.top=dstRect.top+'px';clone.style.left=dstRect.left+'px';
-    if(dstRect.width&&dstRect.height){clone.style.width=dstRect.width+'px';clone.style.height=dstRect.height+'px';}
-    setTimeout(()=>{clone.remove();if(onComplete)onComplete();},330);
+    clone.style.zIndex='99999';clone.style.pointerEvents='none';clone.style.transition='top .34s cubic-bezier(.22,1,.36,1),left .34s cubic-bezier(.22,1,.36,1),width .34s ease,height .34s ease,transform .34s ease,opacity .34s ease';clone.style.margin='0';clone.style.opacity='1';clone.style.boxShadow='0 8px 20px rgba(0,0,0,.6)';
+    document.body.appendChild(clone);
+    void clone.offsetWidth;
+    clone.style.transform='scale(1.04)';
+    requestAnimationFrame(()=>{
+      clone.style.top=dstRect.top+'px';clone.style.left=dstRect.left+'px';
+      if(dstRect.width&&dstRect.height){clone.style.width=dstRect.width+'px';clone.style.height=dstRect.height+'px';}
+      clone.style.transform='scale(1)';
+    });
+    const cleanup=()=>{if(clone.parentNode)clone.parentNode.removeChild(clone);if(onComplete)onComplete();};
+    clone.addEventListener('transitionend',cleanup,{once:true});
+    setTimeout(cleanup,520);
   }
 
   function createClosedTileElement(){const el=document.createElement('div');el.className='tile tile-back';return el;}
@@ -342,7 +350,14 @@
     const ids=['discard-player-spot','discard-right-spot','discard-top-spot','discard-left-spot'];ids.forEach((id,rel)=>{const spot=$('#'+id);spot.innerHTML='';spot.classList.remove('takeable');const t=relDiscards[rel];if(!t)return;const el=createTileElement(t);if(rel===3&&canDraw()){spot.classList.add('takeable');el.addEventListener('click',()=>drawFromLeftDiscard());el.draggable=true;el.addEventListener('dragstart',e=>{e.dataTransfer.setData('action','draw-discard');$('#rack-container').classList.add('drag-active');});}spot.appendChild(el);});
   }
   function renderGame(){if(!game)return;const relDiscards=syncGameState();renderIndicator();renderPlayers();renderRack();renderDiscards(relDiscards);$('#deck-count').textContent=game.deckCount;updateTimer();
-    if(game.finished){stopTimer();const p=room?.players?.find(x=>x.id===game.winnerId);showEndModal(p?.id===myId?'🏆 TEBRİKLER!':'🏆 OYUN BİTTİ',p?`${p.name} eli bitirdi!`:'El bitti.');return;}
+    if(game.finished){
+      stopTimer();
+      document.querySelectorAll('.flying-tile').forEach(el=>el.remove());
+      const p=room?.players?.find(x=>x.id===game.winnerId);
+      status(p?`${p.name} eli bitirdi!`:'El bitti.');
+      showEndModal(p?.id===myId?'🏆 TEBRİKLER!':'🏆 OYUN BİTTİ',p?`${p.name} eli bitirdi!`:'El bitti.');
+      return;
+    }
     const p=playerAtSeat(game.turnIndex);if(p)status(game.turnIndex===mySeatIndex?(game.phase==='draw'?'Sıra sizde! Ortadan veya soldan taş çekin.':'Taş çektiniz. Şimdi bir taş atın veya bitirin.'):`${p.name} düşünüyor...`);
   }
 
