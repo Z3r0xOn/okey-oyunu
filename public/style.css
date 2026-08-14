@@ -1,580 +1,200 @@
+// gameLogic.js — Okey oyununun kurallarını içeren saf (framework'ten bağımsız) mantık katmanı.
 
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700;800&display=swap');
+const COLORS = ['kirmizi', 'sari', 'mavi', 'siyah']; // kırmızı, sarı, mavi, siyah
 
-        * {
-            box-sizing: border-box;
-            user-select: none;
-            -webkit-user-select: none;
-            margin: 0;
-            padding: 0;
-        }
-
-        body {
-            background-color: #050a07;
-            font-family: 'Inter', sans-serif;
-            color: #ffffff;
-            overflow: hidden;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .top-navbar {
-            height: 48px;
-            background: #0d120f;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0 20px;
-            z-index: 100;
-        }
-
-        .brand-logo {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-weight: 800;
-            font-size: 16px;
-            color: #ffc107;
-            letter-spacing: 0.5px;
-        }
-
-        .brand-logo .tile-icon {
-            width: 18px;
-            height: 22px;
-            background: #ffc107;
-            border-radius: 3px;
-            display: inline-block;
-        }
-
-        .status-pill {
-            background: rgba(0, 0, 0, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            padding: 6px 22px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #e2e8f0;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            background-color: #22c55e;
-            border-radius: 50%;
-            box-shadow: 0 0 8px #22c55e;
-        }
-
-        .header-btn {
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.15);
-            color: #fff;
-            padding: 5px 12px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.2s;
-        }
-
-        .header-btn:hover { background: rgba(255, 255, 255, 0.15); }
-
-        #game-board {
-            flex: 1;
-            position: relative;
-            background: radial-gradient(circle at center, #115732 0%, #083b20 70%, #031e0f 100%);
-            box-shadow: inset 0 0 100px rgba(0,0,0,0.8);
-            overflow: hidden;
-        }
-
-        #game-board::before {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background-image: radial-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-            background-size: 14px 14px;
-            pointer-events: none;
-        }
-
-        .player-badge {
-            position: absolute;
-            background: rgba(13, 18, 15, 0.88);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 8px;
-            padding: 6px 12px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            box-shadow: 0 6px 16px rgba(0,0,0,0.5);
-            z-index: 10;
-            transition: border-color 0.3s, box-shadow 0.3s;
-        }
-
-        .player-avatar {
-            width: 36px;
-            height: 36px;
-            border-radius: 6px;
-            background: #1a2820;
-            border: 1px solid #ffc107;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 18px;
-        }
-
-        .player-info {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            min-width: 80px;
-        }
-
-        .player-name { font-size: 12px; font-weight: 700; color: #ffffff; }
-        .player-score { font-size: 10px; font-weight: 700; color: #ffc107; }
-
-        .timer-bar {
-            width: 100%;
-            height: 4px;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 2px;
-            overflow: hidden;
-            margin-top: 2px;
-        }
-
-        .timer-fill {
-            height: 100%;
-            width: 100%;
-            background: linear-gradient(90deg, #00f2fe 0%, #4facfe 100%);
-            transition: width 0.35s linear;
-        }
-
-        .active-turn {
-            border-color: #ffc107 !important;
-            box-shadow: 0 0 15px rgba(255, 193, 7, 0.6) !important;
-        }
-
-        #seat-top { top: 15px; left: 50%; transform: translateX(-50%); }
-        #seat-left { left: 25px; top: 38%; transform: translateY(-50%); }
-        #seat-bottom { bottom: 10px; left: 50%; transform: translateX(-50%); }
-        #seat-right { right: 25px; top: 38%; transform: translateY(-50%); }
-
-        .tile {
-            width: 40px;
-            height: 56px;
-            background: linear-gradient(180deg, #ffffff 0%, #f4eee2 85%, #dfd1b8 100%);
-            border-radius: 5px;
-            border-top: 1px solid #ffffff;
-            border-left: 1px solid #ffffff;
-            border-right: 2px solid #b8a68d;
-            border-bottom: 4px solid #99876e;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            font-weight: 800;
-            font-size: 22px;
-            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
-            cursor: grab;
-            position: relative;
-            transition: transform 0.15s, box-shadow 0.15s;
-        }
-
-        .tile:active { cursor: grabbing; }
-        .tile.red { color: #d32f2f; }
-        .tile.black { color: #1e1e1e; }
-        .tile.blue { color: #1976d2; }
-        .tile.yellow { color: #f57c00; }
-
-        .tile::after {
-            content: "•";
-            font-size: 10px;
-            margin-top: -8px;
-            opacity: 0.8;
-        }
-
-        .tile.selected {
-            transform: translateY(-8px);
-            border: 2px solid #ffc107;
-            box-shadow: 0 0 12px rgba(255, 193, 7, 0.8);
-        }
-
-        .tile.group-highlight {
-            border: 2px dashed #00f2fe !important;
-            box-shadow: 0 0 12px rgba(0, 242, 254, 0.8) !important;
-        }
-
-        .tile-back {
-            background: linear-gradient(180deg, #2b4c7e 0%, #1a335a 100%);
-            border: 1px solid #3d639d;
-            border-bottom: 4px solid #10213d;
-            color: transparent;
-        }
-
-        .tile-back::after { content: "" !important; }
-
-        .discard-spot {
-            position: absolute;
-            width: 42px;
-            height: 58px;
-            border: 1.5px dashed rgba(255,255,255,0.25);
-            border-radius: 6px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 5;
-            background: rgba(0,0,0,0.15);
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
-
-        #discard-top-spot { top: 90px; left: 110px; }
-        #discard-left-spot { bottom: 20px; left: 110px; }
-        #discard-player-spot { bottom: 20px; right: 110px; }
-        #discard-right-spot { top: 90px; right: 110px; }
-
-        .discard-spot.takeable {
-            border-color: #22c55e;
-            box-shadow: 0 0 15px rgba(34, 197, 94, 0.8);
-            cursor: grab;
-            animation: pulse-border 1.2s infinite;
-        }
-
-        @keyframes pulse-border {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.08); }
-            100% { transform: scale(1); }
-        }
-
-        #center-area {
-            position: absolute;
-            top: 42%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            background: rgba(12, 30, 20, 0.85);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            padding: 12px 22px;
-            border-radius: 14px;
-            display: flex;
-            gap: 20px;
-            align-items: center;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
-        }
-
-        .center-card-group {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-        }
-
-        .center-card-label {
-            font-size: 10px;
-            font-weight: 700;
-            color: #94a3b8;
-            letter-spacing: 0.5px;
-        }
-
-        #finish-drop-zone {
-            border: 2px dashed #ef4444;
-            background: rgba(239, 68, 68, 0.1);
-            border-radius: 8px;
-            padding: 4px 10px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.25s ease;
-            cursor: pointer;
-        }
-
-        #finish-drop-zone.drag-over {
-            background: rgba(239, 68, 68, 0.35);
-            border-color: #ffc107;
-            transform: scale(1.08);
-            box-shadow: 0 0 20px rgba(255, 193, 7, 0.8);
-        }
-
-        #deck-tile {
-            cursor: grab;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 16px;
-            font-weight: 800;
-            color: #fff;
-            transition: transform 0.2s;
-        }
-
-        #deck-tile:hover { transform: scale(1.05); }
-
-        #rack-container {
-            height: 160px;
-            background: linear-gradient(180deg, #2b1810 0%, #1a0e09 100%);
-            border-top: 3px solid #4a2d1d;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            padding: 8px 0;
-            gap: 6px;
-            position: relative;
-            z-index: 20;
-            transition: box-shadow 0.3s, border-color 0.3s;
-        }
-
-        #rack-container.drag-active {
-            box-shadow: inset 0 0 25px rgba(34, 197, 94, 0.5);
-            border-top-color: #22c55e;
-        }
-
-        .rack-row {
-            display: flex;
-            gap: 3px;
-            background: #120905;
-            padding: 4px 6px;
-            border-radius: 6px;
-            box-shadow: inset 0 2px 6px rgba(0,0,0,0.9);
-            width: fit-content;
-            height: 64px;
-        }
-
-        .rack-slot {
-            width: 42px;
-            height: 56px;
-            border-radius: 4px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px dashed rgba(255, 255, 255, 0.08);
-            transition: background-color 0.15s, border 0.15s;
-        }
-
-        .rack-slot.hovered {
-            background: rgba(34, 197, 94, 0.45) !important;
-            border: 1px solid #22c55e !important;
-            box-shadow: 0 0 10px rgba(34, 197, 94, 0.7);
-        }
-
-        .action-bar {
-            height: 46px;
-            background: #090e0b;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 12px;
-            padding: 0 10px;
-            z-index: 30;
-        }
-
-        .btn-action {
-            background: #1c2620;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 6px;
-            color: #e2e8f0;
-            padding: 7px 16px;
-            font-size: 12px;
-            font-weight: 700;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            transition: all 0.15s ease;
-        }
-
-        .btn-action:hover {
-            background: #2a382f;
-            color: #fff;
-            border-color: rgba(255, 255, 255, 0.25);
-        }
-
-        .btn-finish {
-            background: linear-gradient(180deg, #dc2626 0%, #991b1b 100%);
-            border: 1px solid #ef4444;
-            color: #ffffff;
-            box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
-        }
-
-        .btn-finish:hover {
-            background: linear-gradient(180deg, #ef4444 0%, #b91c1c 100%);
-        }
-
-        .modal-overlay {
-            position: fixed;
-            inset: 0;
-            background: rgba(0,0,0,0.85);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            z-index: 1000;
-            opacity: 0;
-            pointer-events: none;
-            transition: opacity 0.3s ease;
-        }
-
-        .modal-overlay.active {
-            opacity: 1;
-            pointer-events: auto;
-        }
-
-        .modal-card {
-            background: #0f1712;
-            border: 1px solid #ffc107;
-            border-radius: 12px;
-            padding: 24px;
-            text-align: center;
-            max-width: 420px;
-            width: 90%;
-            box-shadow: 0 0 30px rgba(255, 193, 7, 0.3);
-            transform: scale(0.9);
-            transition: transform 0.3s ease;
-        }
-
-        .modal-overlay.active .modal-card {
-            transform: scale(1);
-        }
-
-        .modal-title {
-            font-size: 20px;
-            font-weight: 800;
-            color: #ffc107;
-            margin-bottom: 12px;
-        }
-
-        .modal-body {
-            font-size: 14px;
-            color: #e2e8f0;
-            margin-bottom: 20px;
-            line-height: 1.5;
-        }
-
-        .btn-modal {
-            background: #ffc107;
-            color: #000;
-            border: none;
-            padding: 10px 24px;
-            font-weight: 800;
-            border-radius: 6px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        .btn-modal:hover { background: #e0a800; }
-    
-/* ============================================================
-   ONLINE PARTY KATMANI
-   Oyun masası yukarıdaki DÜZ OKEY VIP tasarımının aynısıdır.
-   Bu katman yalnızca lobby / oda bekleme ekranında görünür.
-   ============================================================ */
-.online-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 5000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: rgba(3, 8, 5, 0.94);
-    backdrop-filter: blur(8px);
-}
-.online-overlay[hidden] { display:none !important; }
-.online-card {
-    width: min(430px, calc(100vw - 30px));
-    background: #0d120f;
-    border: 1px solid rgba(255,193,7,.35);
-    border-radius: 12px;
-    padding: 26px;
-    box-shadow: 0 20px 70px rgba(0,0,0,.65), 0 0 30px rgba(255,193,7,.08);
-    text-align:center;
-}
-.online-title { color:#ffc107; font-size:22px; font-weight:800; letter-spacing:.5px; }
-.online-subtitle { color:#94a3b8; font-size:12px; margin:7px 0 18px; }
-.online-tabs { display:flex; gap:6px; margin-bottom:14px; }
-.online-tab { flex:1; border:1px solid rgba(255,255,255,.12); background:#1c2620; color:#94a3b8; padding:9px; border-radius:6px; font-weight:800; font-size:11px; cursor:pointer; }
-.online-tab.active { background:#ffc107; color:#000; border-color:#ffc107; }
-.online-panel { display:flex; flex-direction:column; gap:8px; text-align:left; }
-.online-panel[hidden] { display:none; }
-.online-panel label { color:#e2e8f0; font-size:11px; font-weight:700; }
-.online-panel input { width:100%; height:40px; border-radius:6px; border:1px solid rgba(255,255,255,.14); background:#050a07; color:#fff; padding:0 12px; outline:none; font-size:13px; }
-.online-panel input:focus { border-color:#ffc107; }
-.online-btn { border:1px solid rgba(255,255,255,.14); border-radius:6px; color:#fff; padding:10px 14px; font-size:12px; font-weight:800; cursor:pointer; margin-top:5px; }
-.online-btn.primary { background:#ffc107; color:#000; border-color:#ffc107; }
-.online-btn.secondary { background:#1c2620; }
-.online-error { min-height:18px; color:#ef4444; font-size:11px; margin-top:10px; }
-.waiting-card { max-width:520px; }
-.seat-grid-vip { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:14px 0; }
-.vip-seat { min-height:76px; border-radius:8px; border:1px dashed rgba(255,193,7,.35); background:#111914; color:#fff; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; cursor:pointer; }
-.vip-seat span { color:#94a3b8; font-size:9px; font-weight:700; }
-.vip-seat strong { font-size:12px; }
-.vip-seat.occupied { border-style:solid; background:linear-gradient(180deg,rgba(255,193,7,.13),rgba(255,193,7,.03)); }
-.vip-seat.mine { border-color:#ffc107; box-shadow:0 0 0 2px rgba(255,193,7,.18) inset; }
-.waiting-players { max-height:130px; overflow:auto; text-align:left; background:#090e0b; border:1px solid rgba(255,255,255,.08); border-radius:6px; padding:9px 11px; color:#cbd5e1; font-size:11px; line-height:1.9; }
-.waiting-actions { display:flex; gap:8px; margin-top:12px; }
-.waiting-actions .online-btn { flex:1; }
-@media (max-width:700px) {
-    .online-card { padding:20px; }
-    .seat-grid-vip { gap:7px; }
+let uidCounter = 1;
+function nextId() {
+  return 'T' + (uidCounter++);
 }
 
-
-/* ============================================================
-   AD LAYOUT — desktop arrangement inspired by the reference
-   Top/bottom: horizontal banner, left/right: vertical banner.
-   Replace the contents of .ad-slot with your ad provider code.
-   ============================================================ */
-.ad-slot {
-  position: fixed;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  border: 1px solid rgba(255,255,255,.20);
-  border-radius: 5px;
-  background: rgba(4, 15, 28, .62);
-  color: rgba(255,255,255,.22);
-  font-size: 10px;
-  letter-spacing: 1px;
-  overflow: hidden;
-  pointer-events: none;
-}
-.ad-top, .ad-bottom {
-  width: 550px;
-  height: 70px;
-  left: 50%;
-  transform: translateX(-50%);
-}
-.ad-top { top: 3px; }
-.ad-bottom { bottom: 3px; }
-.ad-left, .ad-right {
-  width: 122px;
-  height: 454px;
-  top: 50%;
-  transform: translateY(-50%);
-}
-.ad-left { left: 8px; }
-.ad-right { right: 8px; }
-
-/* Keep the game readable between the side banners on wide screens. */
-@media (min-width: 1180px) {
-  #game-board { margin-left: 145px; margin-right: 145px; }
-  #rack-container { margin-left: 145px; margin-right: 145px; }
+/** 106 taşlık desteyi oluşturur: 4 renk x 1-13 x 2 kopya + 2 sahte okey. */
+function createDeck() {
+  const deck = [];
+  for (const color of COLORS) {
+    for (let n = 1; n <= 13; n++) {
+      for (let copy = 0; copy < 2; copy++) {
+        deck.push({ id: nextId(), color, number: n, joker: false });
+      }
+    }
+  }
+  deck.push({ id: nextId(), color: null, number: null, joker: true });
+  deck.push({ id: nextId(), color: null, number: null, joker: true });
+  return deck;
 }
 
-/* Smaller desktops/tablets: use only the top and bottom banners. */
-@media (max-width: 1179px) {
-  .ad-left, .ad-right { display: none; }
-  .ad-top, .ad-bottom { width: min(550px, calc(100vw - 24px)); }
+function shuffle(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
 
-/* Phones: don't let ads cover the playable area. */
-@media (max-width: 700px) {
-  .ad-top, .ad-bottom { display: none; }
+/** Yeni bir el başlatır: deste karılır, gösterge açılır, 4 oyuncuya dağıtılır. */
+function startNewHand(seats) {
+  // seats: 4 elemanlı dizi, dolu koltuklar oyuncu id'si, boşlar null (oyun 4 dolu koltukla başlar)
+  let deck = shuffle(createDeck());
+  const indicator = deck.pop();
+  const okeySpec = indicatorToOkey(indicator);
+
+  const hands = {};
+  const dealerIndex = Math.floor(Math.random() * 4);
+  for (let i = 0; i < 4; i++) {
+    const playerId = seats[i];
+    const count = i === dealerIndex ? 15 : 14;
+    hands[playerId] = deck.splice(0, count);
+  }
+
+  return {
+    deck,
+    discardPile: [],
+    indicator,
+    okeySpec,
+    hands,
+    dealerIndex,
+    turnIndex: dealerIndex, // dealer starts by discarding (already has 15)
+    phase: 'discard', // 'draw' | 'discard'
+    finished: false,
+    winnerId: null,
+    discardBySeat: [null, null, null, null]
+  };
 }
+
+function indicatorToOkey(indicator) {
+  if (indicator.joker) {
+    // Gösterge sahte okey gelirse, okey taşı olarak 1-kırmızı kullanılır (yaygın konvansiyon).
+    return { color: 'kirmizi', number: 1 };
+  }
+  const nextNumber = indicator.number === 13 ? 1 : indicator.number + 1;
+  return { color: indicator.color, number: nextNumber };
+}
+
+function isOkeyTile(tile, okeySpec) {
+  if (tile.joker) return true;
+  return tile.color === okeySpec.color && tile.number === okeySpec.number;
+}
+
+/**
+ * 15 taşlık bir elin geçerli bir "bitiş" eli olup olmadığını kontrol eder.
+ * Kurallar (basitleştirilmiş): tüm taşlar 3 ya da 4'lük gruplara ayrılabilmeli.
+ * Grup tipleri: aynı renk ardışık sayılar (seri) ya da aynı sayı farklı renkler (set).
+ * Sahte okey ve gösterge-okey taşları joker (her taşın yerine geçebilir) olarak kullanılabilir.
+ */
+function validateWinningHand(hand, okeySpec) {
+  if (hand.length !== 15) return false;
+
+  const normals = [];
+  let wildCount = 0;
+  for (const t of hand) {
+    if (isOkeyTile(t, okeySpec)) wildCount++;
+    else normals.push({ color: t.color, number: t.number });
+  }
+
+  // Özel durum: 7 çift + 1 okey (çift okey bitişi)
+  if (checkPairsWin(normals, wildCount)) return true;
+
+  // Genel durum: grup grup ayırma (backtracking)
+  return canPartition(normals, wildCount);
+}
+
+function checkPairsWin(normals, wildCount) {
+  // 7 çift (aynı renk+sayı) + kalan 1 taş okey olmalı.
+  if (normals.length + wildCount !== 15) return false;
+  const counts = new Map();
+  for (const t of normals) {
+    const key = t.color + '-' + t.number;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  let pairs = 0;
+  let leftovers = 0;
+  for (const c of counts.values()) {
+    pairs += Math.floor(c / 2);
+    leftovers += c % 2;
+  }
+  const neededWildForPairs = leftovers;
+  const usedWild = neededWildForPairs;
+  const remainingWild = wildCount - usedWild;
+  if (remainingWild < 0) return false;
+  const finalPairs = pairs + leftovers;
+  return finalPairs === 7 && remainingWild === 1;
+}
+
+/** normals: {color,number}[]  wildCount: kaç tane joker kullanılabilir. Tümü 3/4'lük gruplara ayrılabiliyor mu? */
+function canPartition(normals, wildCount) {
+  if (normals.length === 0) return wildCount % 3 === 0 || wildCount === 0 && true;
+  const sorted = normals.slice().sort((a, b) => (a.color === b.color ? a.number - b.number : a.color.localeCompare(b.color)));
+
+  function tryRun(arr, wilds, length) {
+    const first = arr[0];
+    let rest = arr.slice(1);
+    let need = length - 1;
+    let cursor = first.number;
+    let w = wilds;
+    while (need > 0) {
+      cursor += 1;
+      if (cursor > 13) return null;
+      const idx = rest.findIndex(t => t.color === first.color && t.number === cursor);
+      if (idx !== -1) {
+        rest = rest.slice(0, idx).concat(rest.slice(idx + 1));
+      } else if (w > 0) {
+        w -= 1;
+      } else {
+        return null;
+      }
+      need -= 1;
+    }
+    return { rest, wilds: w };
+  }
+
+  function trySet(arr, wilds, length) {
+    const first = arr[0];
+    let rest = arr.slice(1).filter(t => t.number === first.number);
+    let others = arr.slice(1).filter(t => t.number !== first.number);
+    const usedColors = new Set([first.color]);
+    let w = wilds;
+    let need = length - 1;
+    let pool = rest.slice();
+    while (need > 0) {
+      const idx = pool.findIndex(t => !usedColors.has(t.color));
+      if (idx !== -1) {
+        usedColors.add(pool[idx].color);
+        pool = pool.slice(0, idx).concat(pool.slice(idx + 1));
+      } else if (w > 0) {
+        w -= 1;
+      } else {
+        return null;
+      }
+      need -= 1;
+    }
+    const remaining = others.concat(pool);
+    return { rest: remaining, wilds: w };
+  }
+
+  function solve(arr, wilds) {
+    if (arr.length === 0) return true;
+    for (const length of [4, 3]) {
+      const runResult = tryRun(arr, wilds, length);
+      if (runResult && solve(sortArr(runResult.rest), runResult.wilds)) return true;
+      const setResult = trySet(arr, wilds, length);
+      if (setResult && solve(sortArr(setResult.rest), setResult.wilds)) return true;
+    }
+    return false;
+  }
+
+  function sortArr(arr) {
+    return arr.slice().sort((a, b) => (a.color === b.color ? a.number - b.number : a.color.localeCompare(b.color)));
+  }
+
+  return solve(sorted, wildCount);
+}
+
+module.exports = {
+  createDeck,
+  shuffle,
+  startNewHand,
+  indicatorToOkey,
+  isOkeyTile,
+  validateWinningHand,
+  COLORS
+};
