@@ -22,3 +22,35 @@
 .tile{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
 .tile.pressing{transform:translateY(-4px) scale(1.02);}
 .rack-slot{touch-action:none;}
+
+
+/* v4 gameplay polish: roomy rack controls + confirmed draw/discard animations */
+.rack-action-title{height:20px;flex:0 0 20px;background:#090e0b;color:#708477;font-size:9px;font-weight:800;letter-spacing:1.5px;text-align:center;display:flex;align-items:center;justify-content:center;border-top:1px solid rgba(255,255,255,.05);}
+.action-bar{height:58px;flex:0 0 58px;gap:10px;padding:5px 14px;background:linear-gradient(180deg,#0c120f,#080d0a);}
+.btn-action{min-width:125px;height:40px;justify-content:center;padding:8px 14px;font-size:11px;border-radius:8px;transition:transform .12s,box-shadow .12s,background .12s;}
+.btn-action:active{transform:translateY(1px) scale(.98)}
+.btn-action:disabled{opacity:.45;cursor:not-allowed}
+.btn-finish{min-width:155px;}
+#rack-container{height:164px;flex-basis:164px;padding:8px 0 7px;gap:7px;}
+.rack-row{height:61px;padding:3px 6px;gap:4px;}
+.rack-slot{width:42px;height:55px;}
+.rack-slot.hovered{transform:translateY(-2px);}
+.tile{will-change:transform,left,top;}
+.tile.pressing{z-index:50;box-shadow:0 0 18px rgba(255,193,7,.55),0 10px 18px rgba(0,0,0,.45);}
+#deck-tile.take-source,#discard-left-spot.take-source{box-shadow:0 0 18px rgba(34,197,94,.9);}
+#finish-drop-zone{min-width:108px;transition:transform .16s,box-shadow .16s,background .16s;}
+#finish-drop-zone.drag-over{box-shadow:0 0 18px rgba(255,193,7,.75);}
+@keyframes tile-land{0%{transform:scale(1.08) translateY(-4px)}60%{transform:scale(.98)}100%{transform:scale(1)}}
+.tile.land{animation:tile-land .28s ease-out;}
+@media(max-width:900px){
+  .action-bar{overflow:visible;height:76px;flex-basis:76px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;padding:5px 8px;}
+  .btn-action{min-width:0;width:100%;height:30px;padding:4px 5px;font-size:9px;}
+  .btn-finish{min-width:0;}
+  .rack-action-title{height:16px;flex-basis:16px;font-size:8px;}
+  #rack-container{height:154px;flex-basis:154px;}
+}
+@media(max-width:600px){
+  .action-bar{grid-template-columns:repeat(2,minmax(0,1fr));height:82px;flex-basis:82px;}
+  .btn-action{font-size:9px;}
+  .rack-action-title{display:none;}
+}
