@@ -5,6 +5,7 @@
   let rackSlots=new Array(32).fill(null);
   let selectedSlotIndex=null, draggedIndices=[], pointerDrag=null, longPressTimer=null;
   let soundEnabled=true, audioCtx=null, turnTimer=null, voiceOn=false, localStream=null;
+  let pendingDraw=null, pendingDiscard=null, previousGame=null;
   const peerConnections={}, audioEls={};
   const COLOR_CLASS={kirmizi:'red',sari:'yellow',mavi:'blue',siyah:'black'};
   const COLOR_ORDER=['kirmizi','sari','mavi','siyah'];
@@ -32,25 +33,97 @@
   $('#soundBtn').addEventListener('click',toggleSound);
 
   function createTileElement(tile,slotIndex=null){
+    if(!tile) return null;
     const el=document.createElement('div');
     el.className='tile';
-    if(!tile){el.classList.add('tile-empty');return el;}
-    if(tile.joker){el.classList.add('black');el.textContent='★';}
-    else{el.classList.add(colorClass(tile));el.textContent=tile.number;}
+    if(tile.joker){ el.classList.add('black'); el.textContent='★'; }
+    else { el.classList.add(colorClass(tile)); el.textContent=tile.number; }
     if(isOkey(tile)){
       el.classList.add('okey-mark');
       const star=document.createElement('span');
       star.textContent='★';
-      star.style.cssText='font-size:11px;color:#2e7d32;margin-top:-4px';
+      star.style.cssText='font-size:12px;color:#2e7d32;margin-top:-4px';
       el.appendChild(star);
     }
+
     if(slotIndex!==null){
-      el.dataset.slot=slotIndex;
-      // Native HTML5 drag is deliberately disabled for tiles. Pointer drag gives
-      // the same behaviour with mouse + touch and lets us hit an exact slot.
-      el.draggable=false;
-      el.addEventListener('pointerdown',e=>startTilePointer(e,slotIndex));
-      el.addEventListener('click',e=>e.stopPropagation());
+      el.draggable=true;
+
+      // The original VIP interaction model: click-select/swap, mouse drag,
+      // contiguous-group long press, and native drag image.
+      el.addEventListener('mousedown',e=>{
+        if(e.button!==0)return;
+        isLongPress=false;
+        isMouseSelecting=true;
+        dragSelectStart=slotIndex;
+        clearTimeout(longPressTimer);
+        longPressTimer=setTimeout(()=>{
+          isLongPress=true;
+          draggedIndices=getContiguousBlock(slotIndex);
+          renderRack();
+        },220);
+      });
+
+      el.addEventListener('mouseenter',()=>{
+        if(isMouseSelecting&&dragSelectStart!==null&&dragSelectStart!==slotIndex){
+          clearTimeout(longPressTimer);
+          selectRangeSlots(dragSelectStart,slotIndex);
+        }
+      });
+
+      el.addEventListener('mouseup',()=>{
+        clearTimeout(longPressTimer);
+        isMouseSelecting=false;
+      });
+      el.addEventListener('mouseleave',()=>clearTimeout(longPressTimer));
+
+      el.addEventListener('dragstart',e=>{
+        clearTimeout(longPressTimer);
+        isMouseSelecting=false;
+
+        let currentlySelected=[];
+        document.querySelectorAll('.rack-slot').forEach((slot,idx)=>{
+          if(slot.firstChild && (slot.firstChild.classList.contains('selected')||slot.firstChild.classList.contains('group-highlight'))){
+            currentlySelected.push(idx);
+          }
+        });
+
+        if(currentlySelected.includes(slotIndex)&&currentlySelected.length>1){
+          draggedIndices=currentlySelected;
+        }else if(draggedIndices.length>1&&draggedIndices.includes(slotIndex)){
+          // Keep selected group.
+        }else if(isLongPress){
+          draggedIndices=getContiguousBlock(slotIndex);
+        }else{
+          draggedIndices=[slotIndex];
+        }
+
+        draggedIndices.forEach(idx=>{
+          const slot=document.querySelector(`.rack-slot[data-index="${idx}"]`);
+          if(slot&&slot.firstChild)slot.firstChild.classList.add('selected');
+        });
+
+        setCustomDragImage(e,draggedIndices.map(idx=>rackSlots[idx]));
+        e.dataTransfer.setData('action','move-rack');
+        $('#rack-container').classList.add('drag-active');
+        playSound('tile');
+      });
+
+      el.addEventListener('dragend',()=>{
+        isLongPress=false;
+        isMouseSelecting=false;
+        clearTimeout(longPressTimer);
+        clearSlotHighlights();
+        $('#rack-container').classList.remove('drag-active');
+        renderRack();
+      });
+
+      el.addEventListener('click',e=>{
+        e.stopPropagation();
+        if(draggedIndices.length>1)draggedIndices=[];
+        selectSlot(slotIndex);
+      });
+
       el.addEventListener('dblclick',e=>{
         e.stopPropagation();
         if(canDiscard()){
@@ -58,198 +131,189 @@
           discardSelectedTile();
         }
       });
+
+      // Touch fallback: same target-slot/group semantics as the original,
+      // without replacing the desktop HTML5 drag behaviour.
+      el.addEventListener('pointerdown',e=>{
+        if(e.pointerType==='mouse')return;
+        e.preventDefault();
+        const idx=slotIndex;
+        let startX=e.clientX,startY=e.clientY,moved=false,grouped=false;
+        clearTimeout(longPressTimer);
+        el.classList.add('pressing');
+        longPressTimer=setTimeout(()=>{
+          grouped=true;
+          draggedIndices=getContiguousBlock(idx);
+          renderRack();
+          $('#rack-container').classList.add('drag-active');
+        },220);
+        const move=ev=>{
+          if(ev.pointerId!==e.pointerId)return;
+          const dist=Math.hypot(ev.clientX-startX,ev.clientY-startY);
+          if(dist>7&&!moved){moved=true;clearTimeout(longPressTimer);if(!grouped)draggedIndices=[idx];$('#rack-container').classList.add('drag-active');}
+          if(moved||grouped){ev.preventDefault();highlightTouchTarget(ev.clientX,ev.clientY);}
+        };
+        const up=ev=>{
+          if(ev.pointerId!==e.pointerId)return;
+          clearTimeout(longPressTimer);el.classList.remove('pressing');
+          if(moved||grouped){
+            const target=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.('.rack-slot');
+            if(target)moveTileToExactSlot(draggedIndices.length?draggedIndices:[idx],Number(target.dataset.index));
+            else {draggedIndices=[];renderRack();}
+          }else{
+            selectSlot(idx);
+          }
+          draggedIndices=[];
+          pointerDrag=null;
+          $('#rack-container').classList.remove('drag-active');
+          clearSlotHighlights();
+          window.removeEventListener('pointermove',move);
+          window.removeEventListener('pointerup',up);
+          window.removeEventListener('pointercancel',up);
+        };
+        window.addEventListener('pointermove',move,{passive:false});
+        window.addEventListener('pointerup',up,{passive:false});
+        window.addEventListener('pointercancel',up,{passive:false});
+      },{passive:false});
     }
     return el;
   }
 
   function renderRack(){
-    const r1=$('#rack-row-1'),r2=$('#rack-row-2');
-    r1.innerHTML='';r2.innerHTML='';
+    const row1=$('#rack-row-1'),row2=$('#rack-row-2');
+    row1.innerHTML='';row2.innerHTML='';
     for(let i=0;i<32;i++){
       const slot=document.createElement('div');
       slot.className='rack-slot';
       slot.dataset.index=i;
-      slot.addEventListener('dragover',e=>{
-        e.preventDefault();
-        highlightTargets(i,draggedIndices.length||1);
-      });
-      slot.addEventListener('dragleave',()=>clearHighlights());
+      slot.addEventListener('dragover',e=>{e.preventDefault();highlightTargetSlots(i);});
+      slot.addEventListener('dragleave',()=>clearSlotHighlights());
       slot.addEventListener('drop',e=>{
         e.preventDefault();
-        const action=e.dataTransfer.getData('action');
-        clearHighlights();
+        clearSlotHighlights();
         $('#rack-container').classList.remove('drag-active');
-        if(action==='draw-deck') drawFromDeck(i);
-        else if(action==='draw-discard') drawFromLeftDiscard(i);
+        const action=e.dataTransfer.getData('action');
+        if(action==='draw-deck')drawFromDeck(i);
+        else if(action==='draw-discard')drawFromLeftDiscard(i);
+        else if(action==='move-rack'&&draggedIndices.length){
+          moveTileToExactSlot(draggedIndices,i);
+          draggedIndices=[];selectedSlotIndex=null;renderRack();
+        }
       });
-      slot.addEventListener('click',()=>{
-        if(!rackSlots[i]) return;
-        selectSlot(i);
-      });
+      slot.addEventListener('click',()=>selectSlot(i));
       if(rackSlots[i]){
         const t=createTileElement(rackSlots[i],i);
         if(selectedSlotIndex===i||draggedIndices.includes(i))t.classList.add('selected');
         slot.appendChild(t);
       }
-      (i<16?r1:r2).appendChild(slot);
-    }
-  }
-
-  function clearHighlights(){
-    document.querySelectorAll('.rack-slot.hovered').forEach(x=>x.classList.remove('hovered'));
-  }
-
-  function highlightTargets(start,count){
-    clearHighlights();
-    const rowStart=start<16?0:16,rowEnd=rowStart+16;
-    for(let i=0;i<count&&start+i<rowEnd;i++){
-      const s=document.querySelector(`.rack-slot[data-index="${start+i}"]`);
-      if(s)s.classList.add('hovered');
+      (i<16?row1:row2).appendChild(slot);
     }
   }
 
   function getContiguousBlock(idx){
-    const rowStart=idx<16?0:16;
-    const rowEnd=rowStart+16;
+    const rowStart=idx<16?0:16,rowEnd=rowStart+16;
     let start=idx,end=idx;
     while(start>rowStart&&rackSlots[start-1]!==null)start--;
     while(end<rowEnd-1&&rackSlots[end+1]!==null)end++;
-    const out=[];
-    for(let i=start;i<=end;i++)if(rackSlots[i]!==null)out.push(i);
-    return out;
+    const out=[];for(let i=start;i<=end;i++)if(rackSlots[i]!==null)out.push(i);return out;
   }
 
-  function selectSlot(i){
-    playSound('tile');
+  function selectRangeSlots(startIdx,endIdx){
+    const min=Math.max(Math.min(startIdx,endIdx),startIdx<16?0:16);
+    const max=Math.min(Math.max(startIdx,endIdx),(startIdx<16?15:31));
     draggedIndices=[];
-    if(selectedSlotIndex===null){
-      if(rackSlots[i])selectedSlotIndex=i;
-    }else if(selectedSlotIndex===i){
-      selectedSlotIndex=null;
-    }else{
-      [rackSlots[selectedSlotIndex],rackSlots[i]]=[rackSlots[i],rackSlots[selectedSlotIndex]];
-      selectedSlotIndex=null;
-    }
+    for(let i=min;i<=max;i++)if(rackSlots[i]!==null)draggedIndices.push(i);
     renderRack();
   }
 
-  // Exact-slot movement from the original VIP rack behaviour:
-  // one tile dropped on a tile swaps them; dropping on an empty slot keeps it there.
-  // Groups move together and stay inside the same 16-slot row.
   function moveTileToExactSlot(sourceIndices,targetIndex){
     if(!sourceIndices.length)return;
     if(sourceIndices.length===1&&sourceIndices[0]===targetIndex)return;
-
-    const rowStart=targetIndex<16?0:16;
-    const rowEnd=rowStart+16;
+    const rowStart=targetIndex<16?0:16,rowEnd=rowStart+16;
     const movingTiles=sourceIndices.map(i=>rackSlots[i]).filter(Boolean);
-    sourceIndices.forEach(i=>{rackSlots[i]=null;});
-
+    sourceIndices.forEach(i=>rackSlots[i]=null);
     const currentTargetTile=rackSlots[targetIndex];
     if(sourceIndices.length===1&&currentTargetTile!==null){
       rackSlots[targetIndex]=movingTiles[0];
       rackSlots[sourceIndices[0]]=currentTargetTile;
     }else{
       let cursor=targetIndex;
-      for(let i=0;i<movingTiles.length;i++){
+      for(const tile of movingTiles){
         if(cursor>=rowEnd)break;
         const existing=rackSlots[cursor];
-        rackSlots[cursor]=movingTiles[i];
+        rackSlots[cursor]=tile;
         if(existing!==null){
-          let emptyIdx=-1;
-          for(let j=rowStart;j<rowEnd;j++){
-            if(rackSlots[j]===null){emptyIdx=j;break;}
-          }
+          const emptyIdx=rackSlots.findIndex((s,i)=>s===null&&i>=rowStart&&i<rowEnd);
           if(emptyIdx!==-1)rackSlots[emptyIdx]=existing;
         }
         cursor++;
       }
     }
-    selectedSlotIndex=null;
-    draggedIndices=[];
+    selectedSlotIndex=null;draggedIndices=[];playSound('tile');renderRack();
+  }
+
+  function selectSlot(index){
     playSound('tile');
+    draggedIndices=[];
+    if(selectedSlotIndex===null){
+      if(rackSlots[index])selectedSlotIndex=index;
+    }else if(selectedSlotIndex===index){
+      selectedSlotIndex=null;
+    }else{
+      [rackSlots[selectedSlotIndex],rackSlots[index]]=[rackSlots[index],rackSlots[selectedSlotIndex]];
+      selectedSlotIndex=null;
+    }
     renderRack();
   }
 
-  function startTilePointer(e,idx){
-    if(e.button!==undefined&&e.button!==0)return;
-    e.preventDefault();
-    e.stopPropagation();
-    clearTimeout(longPressTimer);
-    draggedIndices=[];
-    pointerDrag={
-      idx,
-      pointerId:e.pointerId,
-      startX:e.clientX,
-      startY:e.clientY,
-      moved:false,
-      group:false,
-      longPressed:false
-    };
-    const el=e.currentTarget;
-    el.classList.add('pressing');
-    try{el.setPointerCapture(e.pointerId);}catch(_){ }
+  function clearSlotHighlights(){
+    document.querySelectorAll('.rack-slot.hovered').forEach(s=>s.classList.remove('hovered'));
+    document.querySelectorAll('.tile.group-highlight').forEach(t=>t.classList.remove('group-highlight'));
+  }
 
-    longPressTimer=setTimeout(()=>{
-      if(!pointerDrag||pointerDrag.idx!==idx)return;
-      pointerDrag.longPressed=true;
-      pointerDrag.group=true;
-      draggedIndices=getContiguousBlock(idx);
-      renderRack();
-      $('#rack-container').classList.add('drag-active');
-    },220);
-
-    const move=ev=>{
-      if(!pointerDrag||ev.pointerId!==pointerDrag.pointerId)return;
-      const dx=ev.clientX-pointerDrag.startX,dy=ev.clientY-pointerDrag.startY;
-      if(Math.hypot(dx,dy)>7&&!pointerDrag.moved){
-        pointerDrag.moved=true;
-        clearTimeout(longPressTimer);
-        if(!pointerDrag.group)draggedIndices=[idx];
-        $('#rack-container').classList.add('drag-active');
-      }
-      if(pointerDrag.moved||pointerDrag.group){
-        ev.preventDefault();
-        highlightTouchTarget(ev.clientX,ev.clientY);
-      }
-    };
-
-    const up=ev=>{
-      if(!pointerDrag||ev.pointerId!==pointerDrag.pointerId)return;
-      clearTimeout(longPressTimer);
-      el.classList.remove('pressing');
-
-      const wasDrag=pointerDrag.moved||pointerDrag.group;
-      if(wasDrag){
-        const targetEl=document.elementFromPoint(ev.clientX,ev.clientY)?.closest?.('.rack-slot');
-        if(targetEl){
-          moveTileToExactSlot(draggedIndices.length?draggedIndices:[idx],Number(targetEl.dataset.index));
-        }else{
-          draggedIndices=[];
-          renderRack();
-        }
-      }else{
-        // Normal click: preserve the original select/swap behaviour.
-        selectSlot(idx);
-      }
-
-      pointerDrag=null;
-      $('#rack-container').classList.remove('drag-active');
-      clearHighlights();
-      window.removeEventListener('pointermove',move);
-      window.removeEventListener('pointerup',up);
-      window.removeEventListener('pointercancel',up);
-    };
-    window.addEventListener('pointermove',move,{passive:false});
-    window.addEventListener('pointerup',up,{passive:false});
-    window.addEventListener('pointercancel',up,{passive:false});
+  function highlightTargetSlots(startIndex){
+    clearSlotHighlights();
+    const count=draggedIndices.length||1,rowEnd=startIndex<16?16:32;
+    for(let o=0;o<count;o++){
+      const idx=startIndex+o;if(idx>=rowEnd)break;
+      const slot=document.querySelector(`.rack-slot[data-index="${idx}"]`);if(slot)slot.classList.add('hovered');
+    }
   }
 
   function highlightTouchTarget(x,y){
-    clearHighlights();
-    const el=document.elementFromPoint(x,y)?.closest?.('.rack-slot');
-    if(el)el.classList.add('hovered');
+    clearSlotHighlights();
+    const slot=document.elementFromPoint(x,y)?.closest?.('.rack-slot');
+    if(slot)highlightTargetSlots(Number(slot.dataset.index));
   }
+
+  function setCustomDragImage(e,tiles){
+    if(!e.dataTransfer||!tiles?.length)return;
+    const container=document.createElement('div');
+    container.style.cssText='position:absolute;top:-9999px;left:-9999px;display:flex;gap:3px;pointer-events:none;background:transparent;';
+    tiles.forEach(tile=>{
+      const ghost=createTileElement(tile);
+      if(ghost){ghost.style.position='relative';ghost.style.transform='none';ghost.style.margin='0';container.appendChild(ghost);}
+    });
+    document.body.appendChild(container);
+    try{e.dataTransfer.setDragImage(container,20,28);}catch(_){ }
+    setTimeout(()=>container.remove(),100);
+  }
+
+  function animateTileFly(srcRect,dstRect,tileData,onComplete,isClosed=false){
+    if(!srcRect||!dstRect){if(onComplete)onComplete();return;}
+    const clone=isClosed?createClosedTileElement():createTileElement(tileData);
+    if(!clone){if(onComplete)onComplete();return;}
+    clone.style.position='fixed';
+    clone.style.top=srcRect.top+'px';clone.style.left=srcRect.left+'px';
+    clone.style.width=srcRect.width+'px';clone.style.height=srcRect.height+'px';
+    clone.style.zIndex='99999';clone.style.pointerEvents='none';clone.style.transition='all .32s cubic-bezier(.25,1,.5,1)';clone.style.margin='0';clone.style.boxShadow='0 8px 20px rgba(0,0,0,.6)';
+    document.body.appendChild(clone);clone.getBoundingClientRect();
+    clone.style.top=dstRect.top+'px';clone.style.left=dstRect.left+'px';
+    if(dstRect.width&&dstRect.height){clone.style.width=dstRect.width+'px';clone.style.height=dstRect.height+'px';}
+    setTimeout(()=>{clone.remove();if(onComplete)onComplete();},330);
+  }
+
+  function createClosedTileElement(){const el=document.createElement('div');el.className='tile tile-back';return el;}
 
   function syncHand(){
     const incoming=(game?.myHand||[]).map(localTile);const map=new Map(incoming.map(t=>[t.id,t]));const next=new Array(32).fill(null);
@@ -284,12 +348,38 @@
 
   function canDraw(){return !!game&&!game.finished&&mySeatIndex!=null&&game.turnIndex===mySeatIndex&&game.phase==='draw';}
   function canDiscard(){return !!game&&!game.finished&&mySeatIndex!=null&&game.turnIndex===mySeatIndex&&game.phase==='discard';}
-  function animateTile(src,dst,tile,closed=false){if(!src||!dst)return;const c=createTileElement(closed?null:tile);if(closed)c.classList.add('tile-back');c.style.position='fixed';c.style.left=src.left+'px';c.style.top=src.top+'px';c.style.width=src.width+'px';c.style.height=src.height+'px';c.style.zIndex=9999;c.style.pointerEvents='none';c.style.transition='all .3s ease';document.body.appendChild(c);c.getBoundingClientRect();c.style.left=dst.left+'px';c.style.top=dst.top+'px';setTimeout(()=>c.remove(),320);}
+  function animateTile(src,dst,tile,closed=false){ animateTileFly(src,dst,tile,null,closed); }
 
-  function drawFromDeck(targetSlot=null){if(!canDraw())return toast(game?.turnIndex!==mySeatIndex?'Sıra sizde değil!':'Zaten taş çektiniz.');const src=$('#deck-tile').getBoundingClientRect();socket.emit('drawTile','deck');playSound('draw');}
-  function drawFromLeftDiscard(targetSlot=null){if(!canDraw())return toast('Şu an taş çekemezsin.');const spot=$('#discard-left-spot');if(!spot.querySelector('.tile'))return toast('Solundaki oyuncunun atığı yok.');socket.emit('drawTile','discard');playSound('draw');}
-  function discardSelectedTile(){if(!canDiscard())return toast(game?.turnIndex!==mySeatIndex?'Sıra sizde değil!':'Önce taş çekmelisin.');if(selectedSlotIndex==null||!rackSlots[selectedSlotIndex])return toast('Önce atacağın taşı seç.');const t=rackSlots[selectedSlotIndex],slot=document.querySelector(`.rack-slot[data-index="${selectedSlotIndex}"]`);if(slot)animateTile(slot.getBoundingClientRect(),$('#discard-player-spot').getBoundingClientRect(),t);socket.emit('discardTile',t.id);selectedSlotIndex=null;draggedIndices=[];}
-  function finishGame(){if(!canDiscard())return toast('Bitmek için sıra sende olmalı ve taş çekmiş olmalısın.');if(selectedSlotIndex==null||!rackSlots[selectedSlotIndex])return toast('Bitiş için atacağın son taşı seç veya sürükle.');const t=rackSlots[selectedSlotIndex];socket.emit('discardAndWin',t.id);}
+  function drawFromDeck(targetSlot=null){
+    if(!canDraw())return toast(game?.turnIndex!==mySeatIndex?'Sıra sizde değil!':'Zaten taş çektiniz.');
+    const src=$('#deck-tile').getBoundingClientRect();
+    pendingDraw={source:'deck',src:{...src},targetSlot};
+    socket.emit('drawTile','deck');
+  }
+  function drawFromLeftDiscard(targetSlot=null){
+    if(!canDraw())return toast('Şu an taş çekemezsin.');
+    const spot=$('#discard-left-spot'),tile=spot.querySelector('.tile');
+    if(!tile)return toast('Solundaki oyuncunun atığı yok.');
+    pendingDraw={source:'discard',src:{...spot.getBoundingClientRect()},targetSlot};
+    socket.emit('drawTile','discard');
+  }
+  function discardSelectedTile(){
+    if(!canDiscard())return toast(game?.turnIndex!==mySeatIndex?'Sıra sizde değil!':'Önce taş çekmelisin.');
+    if(selectedSlotIndex==null||!rackSlots[selectedSlotIndex])return toast('Önce atacağın taşı seç.');
+    const t=rackSlots[selectedSlotIndex],slot=document.querySelector(`.rack-slot[data-index="${selectedSlotIndex}"]`);
+    if(!slot)return;
+    pendingDiscard={tileId:t.id,src:{...slot.getBoundingClientRect()},tile:localTile(t)};
+    socket.emit('discardTile',t.id);
+    selectedSlotIndex=null;draggedIndices=[];
+  }
+  function finishGame(){
+    if(!canDiscard())return toast('Bitmek için sıra sende olmalı ve taş çekmiş olmalısın.');
+    if(selectedSlotIndex==null||!rackSlots[selectedSlotIndex])return toast('Bitiş için atacağın son taşı seç veya sürükle.');
+    const t=rackSlots[selectedSlotIndex],slot=document.querySelector(`.rack-slot[data-index="${selectedSlotIndex}"]`);
+    if(slot)pendingDiscard={tileId:t.id,src:{...slot.getBoundingClientRect()},tile:localTile(t)};
+    socket.emit('discardAndWin',t.id);
+    selectedSlotIndex=null;draggedIndices=[];
+  }
 
   function sortTiles(mode){
     const tiles=rackSlots.filter(Boolean);
@@ -352,71 +442,97 @@
   }
 
   function findBestPerCombination(items){
-    const allValidPers=[];
-    const byColor={};
-    COLOR_ORDER.forEach(c=>byColor[c]=[]);
-    items.forEach(it=>{if(byColor[it.color])byColor[it.color].push(it);});
+    // Okey-aware arranger: numbered okey tiles and joker tiles are wildcards.
+    // We enumerate legal 3-5 runs and 3-4 same-number sets, then choose the
+    // non-overlapping combination that covers the most real tiles.
+    const wild=items.filter(it=>it.isOkey);
+    const normal=items.filter(it=>!it.isOkey);
+    const candidates=[];
+    const seen=new Set();
 
-    COLOR_ORDER.forEach(col=>{
-      const list=byColor[col].slice().sort((a,b)=>a.value-b.value);
-      function findRuns(startIndex,currentRun){
-        if(currentRun.length>=3)allValidPers.push([...currentRun]);
-        if(currentRun.length>=5)return;
-        const lastVal=currentRun[currentRun.length-1].value;
-        for(let i=startIndex;i<list.length;i++){
-          if(list[i].value===lastVal+1)findRuns(i+1,[...currentRun,list[i]]);
-        }
-      }
-      for(let i=0;i<list.length;i++)findRuns(i+1,[list[i]]);
-      const tile12=list.find(t=>t.value===12),tile13=list.find(t=>t.value===13),tile1=list.find(t=>t.value===1);
-      if(tile12&&tile13&&tile1)allValidPers.push([tile12,tile13,tile1]);
-    });
-
-    for(let val=1;val<=13;val++){
-      const sameVal=items.filter(it=>it.value===val);
-      const colorMap={};
-      sameVal.forEach(it=>{if(!colorMap[it.color])colorMap[it.color]=[];colorMap[it.color].push(it);});
-      const colors=Object.keys(colorMap);
-      if(colors.length>=3){
-        function combos(colorIdx,current){
-          if(current.length>=3)allValidPers.push([...current]);
-          if(current.length===4||colorIdx>=colors.length)return;
-          const c=colors[colorIdx];
-          colorMap[c].forEach(tile=>combos(colorIdx+1,[...current,tile]));
-          combos(colorIdx+1,current);
-        }
-        combos(0,[]);
-      }
+    function addCandidate(tileList){
+      const ids=tileList.map(x=>x.id);
+      const key=ids.slice().sort().join('|');
+      if(tileList.length>=3&&!seen.has(key)){seen.add(key);candidates.push(tileList);}
     }
 
-    let maxTiles=-1,bestPers=[];
-    const LIMIT=16;
-    if(allValidPers.length<=LIMIT){
-      function search(idx,chosen,used){
-        const count=chosen.reduce((n,p)=>n+p.length,0);
-        if(count>maxTiles){maxTiles=count;bestPers=[...chosen];}
-        if(idx>=allValidPers.length)return;
-        search(idx+1,chosen,used);
-        const p=allValidPers[idx];
-        if(p.every(it=>!used.has(it.id))){
-          const next=new Set(used);p.forEach(it=>next.add(it.id));
-          search(idx+1,[...chosen,p],next);
-        }
-      }
-      search(0,[],new Set());
-    }else{
-      const sorted=[...allValidPers].sort((a,b)=>b.length-a.length);
+    function pickForRequirements(requirements){
       const used=new Set();
-      sorted.forEach(p=>{
-        if(p.every(it=>!used.has(it.id))){bestPers.push(p);p.forEach(it=>used.add(it.id));}
-      });
-      maxTiles=bestPers.reduce((n,p)=>n+p.length,0);
+      const picked=[];
+      let neededWild=0;
+      for(const req of requirements){
+        const found=normal.find(t=>!used.has(t.id)&&t.color===req.color&&t.value===req.value);
+        if(found){picked.push(found);used.add(found.id);}else neededWild++;
+      }
+      if(neededWild>wild.length)return null;
+      const availableWild=wild.filter(t=>!used.has(t.id));
+      for(let i=0;i<neededWild;i++)picked.push(availableWild[i]);
+      return picked;
     }
 
-    const usedIds=new Set();
-    bestPers.forEach(p=>p.forEach(it=>usedIds.add(it.id)));
-    const remaining=items.filter(it=>!usedIds.has(it.id));
-    return {pers:bestPers,remaining};
+    // Standard runs, plus the Okey-specific 12-13-1 short run.
+    for(const color of COLOR_ORDER){
+      for(let start=1;start<=11;start++){
+        for(let len=3;len<=5;len++){
+          if(start+len-1>13)continue;
+          const req=[];for(let n=start;n<start+len;n++)req.push({color,value:n});
+          const picked=pickForRequirements(req);if(picked)addCandidate(picked);
+        }
+      }
+      const special=pickForRequirements([{color,value:12},{color,value:13},{color,value:1}]);
+      if(special)addCandidate(special);
+    }
+
+    // Same-number sets, 3 or 4 different colours, with missing colours
+    // filled by wildcards.
+    for(let value=1;value<=13;value++){
+      for(let mask=0;mask<(1<<4);mask++){
+        const colors=COLOR_ORDER.filter((_,i)=>mask&(1<<i));
+        if(colors.length<3||colors.length>4)continue;
+        const picked=pickForRequirements(colors.map(color=>({color,value})));
+        if(picked)addCandidate(picked);
+      }
+    }
+
+    // Prefer coverage, then fewer wildcards, then longer groups.
+    const score=p=>{
+      const wilds=p.filter(x=>x.isOkey).length;
+      return p.length*100-wilds*8+p.length;
+    };
+    candidates.sort((a,b)=>score(b)-score(a));
+
+    // The hand has at most 15 tiles, so use a memoized bit-mask search instead
+    // of exponential candidate-by-candidate recursion.
+    const indexById=new Map(items.map((t,i)=>[t.id,i]));
+    const useful=candidates.slice(0,80).map(p=>({
+      tiles:p,
+      mask:p.reduce((m,t)=>m|(1<<indexById.get(t.id)),0),
+      score:score(p)
+    }));
+    const byTile=Array.from({length:items.length},()=>[]);
+    useful.forEach((c,i)=>{for(let b=0;b<items.length;b++)if(c.mask&(1<<b))byTile[b].push(i);});
+    const memo=new Map();
+    function solve(mask){
+      if(memo.has(mask))return memo.get(mask);
+      let first=-1;
+      for(let i=0;i<items.length;i++){if(!(mask&(1<<i))){first=i;break;}}
+      if(first===-1)return [];
+      let best=solve(mask|(1<<first));
+      for(const ci of byTile[first]){
+        const c=useful[ci];
+        if((mask&c.mask)!==0)continue;
+        const tail=solve(mask|c.mask);
+        const candidate=[c.tiles,...tail];
+        const candidateCount=candidate.reduce((n,p)=>n+p.length,0);
+        const bestCount=best.reduce((n,p)=>n+p.length,0);
+        if(candidateCount>bestCount || (candidateCount===bestCount&&candidate.length>best.length))best=candidate;
+      }
+      memo.set(mask,best);
+      return best;
+    }
+    const best=solve(0);
+    const usedIds=new Set();best.forEach(group=>group.forEach(t=>usedIds.add(t.id)));
+    return {pers:best,remaining:items.filter(t=>!usedIds.has(t.id))};
   }
 
   function organizeRemaining(remaining){
@@ -460,8 +576,28 @@
     $('#deck-tile').addEventListener('click',()=>drawFromDeck());
     $('#deck-tile').addEventListener('dragstart',e=>{if(!canDraw()){e.preventDefault();return;}e.dataTransfer.setData('action','draw-deck');$('#rack-container').classList.add('drag-active');});
     $('#deck-tile').addEventListener('dragend',()=>$('#rack-container').classList.remove('drag-active'));
-    const finish=$('#finish-drop-zone');finish.addEventListener('dragover',e=>{e.preventDefault();if(canDiscard())finish.classList.add('drag-over')});finish.addEventListener('dragleave',()=>finish.classList.remove('drag-over'));finish.addEventListener('drop',e=>{e.preventDefault();finish.classList.remove('drag-over');if(e.dataTransfer.getData('action')==='move-rack'&&draggedIndices.length){selectedSlotIndex=draggedIndices[0];finishGame();}});finish.addEventListener('click',finishGame);
-    $('#sortSeriBtn').onclick=smartSort;$('#sortColorBtn').onclick=()=>sortTiles('color');$('#sortNumberBtn').onclick=()=>sortTiles('number');$('#discardBtn').onclick=discardSelectedTile;$('#finishBtn').onclick=finishGame;
+    const discardSpot=$('#discard-player-spot');
+    discardSpot.addEventListener('dragover',e=>{e.preventDefault();if(canDiscard()&&draggedIndices.length)discardSpot.classList.add('takeable');});
+    discardSpot.addEventListener('dragleave',()=>discardSpot.classList.remove('takeable'));
+    discardSpot.addEventListener('drop',e=>{
+      e.preventDefault();discardSpot.classList.remove('takeable');
+      if(e.dataTransfer.getData('action')==='move-rack'&&draggedIndices.length&&canDiscard()){
+        selectedSlotIndex=draggedIndices[0];draggedIndices=[];discardSelectedTile();
+      }
+    });
+    const finish=$('#finish-drop-zone');
+    finish.addEventListener('dragover',e=>{e.preventDefault();if(canDiscard())finish.classList.add('drag-over')});
+    finish.addEventListener('dragleave',()=>finish.classList.remove('drag-over'));
+    finish.addEventListener('drop',e=>{e.preventDefault();finish.classList.remove('drag-over');if(e.dataTransfer.getData('action')==='move-rack'&&draggedIndices.length){selectedSlotIndex=draggedIndices[0];finishGame();}});
+    finish.addEventListener('pointerup',e=>{
+      if(draggedIndices.length&&canDiscard()){selectedSlotIndex=draggedIndices[0];draggedIndices=[];finishGame();}
+    });
+    finish.addEventListener('click',finishGame);
+    $('#sortSeriBtn').onclick=smartSort;
+    $('#sortColorBtn').onclick=()=>sortTiles('color');
+    $('#sortNumberBtn').onclick=()=>sortTiles('number');
+    $('#discardBtn').onclick=discardSelectedTile;
+    $('#finishBtn').onclick=finishGame;
   }
 
   function startTimer(){stopTimer();if(!game||game.finished)return;updateTimer();turnTimer=setInterval(updateTimer,200);}
@@ -506,7 +642,59 @@
   socket.on('errorMsg',m=>{ $('#onlineError').textContent=m;toast(m);status(m); });
   socket.on('joinedRoom',({quick})=>{if(!quick)showWaiting();});
   socket.on('roomUpdate',state=>{room=state;if(state.gameActive)showGame();else renderWaiting();});
-  socket.on('gameUpdate',state=>{const wasFinished=game?.finished;game=state;showGame();renderGame();startTimer();if(!wasFinished)playSound('draw');});
+  function animateGameTransition(next){
+    const prev=previousGame;
+    if(!prev){previousGame=next;return;}
+    const prevHandIds=new Set((prev.myHand||[]).map(t=>t.id));
+    const nextHand=(next.myHand||[]);
+    const added=nextHand.find(t=>!prevHandIds.has(t.id));
+    const removedId=(prev.myHand||[]).find(t=>!nextHand.some(n=>n.id===t.id))?.id;
+
+    // Our own pending draw gets a real tile animation into the first newly occupied slot.
+    if(added&&pendingDraw){
+      const slotIndex=rackSlots.findIndex(t=>t?.id===added.id);
+      const target=slotIndex>=0?document.querySelector(`.rack-slot[data-index="${slotIndex}"]`):$('#rack-row-1');
+      if(target)animateTile(pendingDraw.src,target.getBoundingClientRect(),added,false);
+      playSound('draw');
+      pendingDraw=null;
+    }
+
+    // Other players drawing: animate a face-down tile from the deck/discard toward their badge.
+    const sameTurnDraw=prev.turnIndex===next.turnIndex&&prev.phase==='draw'&&next.phase==='discard';
+    if(sameTurnDraw&&!pendingDraw){
+      const seat=next.turnIndex,rel=relSeat(seat);
+      const targetRel=['seat-bottom','seat-right','seat-top','seat-left'][rel??0];
+      const target=$(targetRel?`#${targetRel}`:'#center-area');
+      let src=null,closed=true;
+      if(next.deckCount<prev.deckCount)src=$('#deck-tile')?.getBoundingClientRect();
+      else { const spot=$('#discard-left-spot'); src=spot?.getBoundingClientRect(); }
+      if(src&&target)animateTile(src,target.getBoundingClientRect(),null,closed);
+    }
+
+    // Our own discard is only animated after the server confirms it.
+    if(removedId&&pendingDiscard&&pendingDiscard.tileId===removedId){
+      const target=$('#discard-player-spot');
+      if(target)animateTile(pendingDiscard.src,target.getBoundingClientRect(),pendingDiscard.tile,false);
+      playSound('discard');
+      pendingDiscard=null;
+    }
+
+    // Other players' discarded tiles animate from their badge to their discard spot.
+    const oldD=prev.discardsBySeat||[null,null,null,null],newD=next.discardsBySeat||[null,null,null,null];
+    newD.forEach((tile,seat)=>{
+      const old=oldD[seat];
+      if(tile&&(!old||old.id!==tile.id)&&seat!==mySeatIndex){
+        const rel=relSeat(seat);
+        const badgeIds=['seat-bottom','seat-right','seat-top','seat-left'];
+        const spotIds=['discard-player-spot','discard-right-spot','discard-top-spot','discard-left-spot'];
+        const src=$(rel!=null?`#${badgeIds[rel]}`:'#center-area'),dst=$(rel!=null?`#${spotIds[rel]}`:'#center-area');
+        if(src&&dst)animateTile(src.getBoundingClientRect(),dst.getBoundingClientRect(),tile,false);
+      }
+    });
+    previousGame=next;
+  }
+
+  socket.on('gameUpdate',state=>{const wasFinished=game?.finished;const prev=previousGame;game=state;showGame();renderGame();previousGame=prev;animateGameTransition(state);startTimer();if(!prev&&!wasFinished)playSound('draw');previousGame=state;});
 
   setupInteractions();
   showLobby();
