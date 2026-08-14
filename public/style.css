@@ -17,3 +17,8 @@
 @media(max-width:1100px){:root{--side-w:0px}.ad-left,.ad-right{display:none}#app-content,.scene-overlay{left:0;right:0}.chat-panel{right:0}.ad-top,.ad-bottom{width:min(550px,calc(100vw - 16px))}}
 @media(max-width:700px){:root{--ad-top:54px;--ad-bottom:54px}.ad-top,.ad-bottom{height:50px}.header-actions .header-btn:first-child{display:none}.header-btn{padding:6px 7px;font-size:10px}.status-pill{max-width:40%;padding:5px 9px;font-size:10px}.brand-logo{font-size:13px}.player-badge{transform:scale(.82)}#seat-top{top:8px}#seat-left{left:3px}#seat-right{right:3px}#center-area{padding:8px 10px;gap:8px;transform:translate(-50%,-50%) scale(.88)}#rack-container{height:140px;flex-basis:140px}.rack-row{height:56px;max-width:calc(100% - 8px);overflow-x:auto}.rack-slot{width:36px;height:48px}.tile{width:34px;height:48px;font-size:18px}.action-bar{height:auto;min-height:44px;gap:4px;overflow-x:auto;justify-content:flex-start}.btn-action{font-size:9px;padding:7px 8px;white-space:nowrap}.online-card{padding:20px}.scene-overlay{top:var(--ad-top);bottom:var(--ad-bottom)}}
 @media(min-width:1200px){:root{--side-w:138px}.ad-left,.ad-right{display:flex}}
+
+/* VIP rack interaction fix: pointer-based dragging works with mouse and touch. */
+.tile{touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;}
+.tile.pressing{transform:translateY(-4px) scale(1.02);}
+.rack-slot{touch-action:none;}
