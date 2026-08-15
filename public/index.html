@@ -27,23 +27,38 @@
   </header>
 
   <main id="game-board">
-    <div class="player-badge" id="seat-top">
-      <div class="player-avatar">👩</div><div class="player-info"><div class="player-name" id="name-top">Boş</div><div class="player-score" id="score-top">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-top"></div></div></div>
-    </div>
-    <div class="player-badge" id="seat-left">
-      <div class="player-avatar">👨‍✈️</div><div class="player-info"><div class="player-name" id="name-left">Boş</div><div class="player-score" id="score-left">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-left"></div></div></div>
-    </div>
-    <div class="player-badge" id="seat-bottom">
-      <div class="player-avatar">👤</div><div class="player-info"><div class="player-name" id="name-player">Siz</div><div class="player-score" id="score-player">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-player"></div></div></div>
-    </div>
-    <div class="player-badge" id="seat-right">
-      <div class="player-avatar">👨</div><div class="player-info"><div class="player-name" id="name-right">Boş</div><div class="player-score" id="score-right">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-right"></div></div></div>
+
+    <!-- ÜST -->
+    <div class="seat-zone zone-top">
+      <div class="player-badge" id="seat-top">
+        <div class="player-avatar">👩</div><div class="player-info"><div class="player-name" id="name-top">Boş</div><div class="player-score" id="score-top">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-top"></div></div></div>
+      </div>
+      <div class="discard-spot" id="discard-top-spot"></div>
     </div>
 
-    <div class="discard-spot" id="discard-top-spot"></div>
-    <div class="discard-spot" id="discard-left-spot"></div>
-    <div class="discard-spot" id="discard-player-spot"></div>
-    <div class="discard-spot" id="discard-right-spot"></div>
+    <!-- SOL -->
+    <div class="seat-zone zone-left">
+      <div class="player-badge" id="seat-left">
+        <div class="player-avatar">👨‍✈️</div><div class="player-info"><div class="player-name" id="name-left">Boş</div><div class="player-score" id="score-left">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-left"></div></div></div>
+      </div>
+      <div class="discard-spot" id="discard-left-spot"></div>
+    </div>
+
+    <!-- SAĞ -->
+    <div class="seat-zone zone-right">
+      <div class="player-badge" id="seat-right">
+        <div class="player-avatar">👨</div><div class="player-info"><div class="player-name" id="name-right">Boş</div><div class="player-score" id="score-right">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-right"></div></div></div>
+      </div>
+      <div class="discard-spot" id="discard-right-spot"></div>
+    </div>
+
+    <!-- ALT (Siz) -->
+    <div class="seat-zone zone-bottom">
+      <div class="player-badge" id="seat-bottom">
+        <div class="player-avatar">👤</div><div class="player-info"><div class="player-name" id="name-player">Siz</div><div class="player-score" id="score-player">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-player"></div></div></div>
+      </div>
+      <div class="discard-spot" id="discard-player-spot"></div>
+    </div>
 
     <div id="center-area">
       <div class="center-card-group">
