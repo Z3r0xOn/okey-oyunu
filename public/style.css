@@ -378,7 +378,7 @@ button{
 }
 
 
-/* Oyuncular */
+/* OYUNCU POZİSYONLARI */
 
 #seat-top{
   top:15px;
@@ -453,6 +453,17 @@ button{
     box-shadow .15s;
 
   flex:none;
+
+  touch-action:none;
+
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-touch-callout:none;
+
+  will-change:
+    transform,
+    left,
+    top;
 }
 
 .tile:active{
@@ -515,8 +526,25 @@ button{
 
 
 /* =========================================================
-   TAŞ ATMA ALANLARI
-   ========================================================= */
+   TAŞ ATMA NOKTALARI
+   =========================================================
+
+   BURASI SENİN İKİNCİ RESİMDEKİ BEYAZ KUTULARA GÖRE
+   AYARLANDI.
+
+   ┌─────────────────────────────────────────────┐
+   │                                             │
+   │  [ÜST OYUNCU TAŞI]             [SAĞ ÜST]   │
+   │                                             │
+   │                                             │
+   │  [SOL OYUNCU]                  [SAĞ OYUNCU] │
+   │                                             │
+   │                                             │
+   └─────────────────────────────────────────────┘
+
+   Alt oyuncunun taşı sağ-alt tarafta.
+*/
+
 
 .discard-spot{
   position:absolute;
@@ -530,6 +558,7 @@ button{
   border-radius:6px;
 
   display:flex;
+
   justify-content:center;
   align-items:center;
 
@@ -548,7 +577,8 @@ button{
 
   cursor:grab;
 
-  animation:pulse-border 1.2s infinite;
+  animation:
+    pulse-border 1.2s infinite;
 }
 
 @keyframes pulse-border{
@@ -558,104 +588,111 @@ button{
 }
 
 
-/*
-  YENİ MASA DÜZENİ
+/* =========================================================
+   1 — ÜST OYUNCUNUN TAŞI
+   İkinci resimde sol-üstteki beyaz kutu
+   ========================================================= */
 
-  Referanstaki mantık:
-
-  üst orta       -> üst oyuncunun taşı
-  sol orta       -> sol oyuncunun taşı / çekilebilir taş
-  sağ orta       -> sağ oyuncunun taşı
-  alt orta       -> bizim attığımız taş
-*/
-
-/* ÜST OYUNCU TAŞI */
 #discard-top-spot{
-  top:30%;
-  left:50%;
-
-  transform:translateX(-50%);
-}
-
-
-/* SOL OYUNCU TAŞI / ÇEKME */
-#discard-left-spot{
-  top:58%;
-  left:11%;
-}
-
-
-/* BİZİM ATTIĞIMIZ TAŞ */
-#discard-player-spot{
-  bottom:18px;
-  left:62%;
-
-  transform:translateX(-50%);
-}
-
-
-/* SAĞ OYUNCU TAŞI */
-#discard-right-spot{
-  top:58%;
-  right:11%;
+  top:3%;
+  left:4%;
 }
 
 
 /* =========================================================
-   MASA ÜZERİ DESTE / GÖSTERGE / OKEY
+   2 — SOL OYUNCUNUN TAŞI
+   İkinci resimde sol-ortadaki beyaz kutu
    ========================================================= */
 
-/*
-  Artık center-area bütün elemanları ortada
-  sıkıştıran kutu değil.
+#discard-left-spot{
+  top:62%;
+  left:4%;
+}
 
-  Sadece oyun alanı içinde konumlandırma katmanı.
+
+/* =========================================================
+   3 — SAĞ / ÜST OYUNCUNUN TAŞI
+   İkinci resimde sağ-üstteki beyaz kutu
+   ========================================================= */
+
+#discard-right-spot{
+  top:3%;
+  right:4%;
+}
+
+
+/* =========================================================
+   4 — BİZİM ATTIĞIMIZ TAŞ
+   İkinci resimde sağ-alt taraftaki beyaz kutu
+   ========================================================= */
+
+#discard-player-spot{
+  top:65%;
+  right:4%;
+}
+
+
+/* =========================================================
+   TAŞ ÇEKME VURGUSU
+   ========================================================= */
+
+#deck-tile.take-source,
+#discard-left-spot.take-source{
+  box-shadow:
+    0 0 18px rgba(34,197,94,.9);
+}
+
+
+/* =========================================================
+   MERKEZ OYUN ALANI
+   =========================================================
+
+   BURAYA DOKUNMADIM.
+
+   Deste / gösterge / okey-bitiş mevcut düzenindeki
+   orta bölümde kalıyor.
 */
 
 #center-area{
   position:absolute;
 
-  inset:0;
+  top:42%;
+  left:50%;
 
-  width:100%;
-  height:100%;
+  transform:
+    translate(-50%,-50%);
 
-  left:0;
-  top:0;
+  background:
+    rgba(12,30,20,.88);
 
-  transform:none;
+  border:
+    1px solid rgba(255,255,255,.12);
 
-  background:transparent;
+  padding:
+    12px 22px;
 
-  border:0;
-
-  padding:0;
-
-  border-radius:0;
-
-  display:block;
-
-  box-shadow:none;
-
-  z-index:8;
-
-  pointer-events:none;
-}
-
-
-/* Ortak grup */
-
-.center-card-group{
-  position:absolute;
+  border-radius:14px;
 
   display:flex;
+
+  gap:20px;
+
+  align-items:center;
+
+  box-shadow:
+    0 8px 24px rgba(0,0,0,.5);
+
+  z-index:8;
+}
+
+.center-card-group{
+  display:flex;
+
   flex-direction:column;
 
   align-items:center;
 
   gap:4px;
-
-  pointer-events:auto;
 }
 
 .center-card-label{
@@ -666,60 +703,13 @@ button{
   color:#94a3b8;
 
   letter-spacing:.5px;
-
-  white-space:nowrap;
 }
 
 .finish-label{
   color:#ef4444;
 }
 
-
-/* =========================================================
-   DESTE
-   ========================================================= */
-
-.deck-group{
-  top:15%;
-  left:10%;
-}
-
-
-/* Deste tıklanabilir */
-
-#deck-tile{
-  cursor:pointer;
-}
-
-
-/* Deste sayısı */
-
-.tile-back #deck-count{
-  color:#fff;
-  font-size:16px;
-}
-
-
-/* =========================================================
-   GÖSTERGE
-   ========================================================= */
-
-.indicator-group{
-  top:15%;
-  right:10%;
-}
-
-
-/* =========================================================
-   OKEY / BİTİŞ
-   ========================================================= */
-
 .center-card-group#finish-drop-zone{
-  left:50%;
-  top:52%;
-
-  transform:translate(-50%,-50%);
-
   border:
     2px dashed #ef4444;
 
@@ -738,8 +728,6 @@ button{
     transform .16s,
     box-shadow .16s,
     background .16s;
-
-  pointer-events:auto;
 }
 
 .center-card-group#finish-drop-zone.drag-over{
@@ -748,19 +736,24 @@ button{
 
   border-color:var(--gold);
 
-  transform:
-    translate(-50%,-50%)
-    scale(1.06);
-}
+  transform:scale(1.06);
 
-#finish-drop-zone.drag-over{
   box-shadow:
     0 0 18px rgba(255,193,7,.75);
 }
 
+#deck-tile{
+  cursor:pointer;
+}
+
+.tile-back #deck-count{
+  color:#fff;
+  font-size:16px;
+}
+
 
 /* =========================================================
-   OYUNCU TAŞLIĞI
+   TAŞLIK
    ========================================================= */
 
 #rack-container{
@@ -774,12 +767,15 @@ button{
       #1a0e09
     );
 
-  border-top:3px solid #4a2d1d;
+  border-top:
+    3px solid #4a2d1d;
 
   display:flex;
+
   flex-direction:column;
 
   justify-content:center;
+
   align-items:center;
 
   padding:8px 0 7px;
@@ -828,10 +824,12 @@ button{
   border-radius:4px;
 
   display:flex;
+
   justify-content:center;
   align-items:center;
 
-  background:rgba(255,255,255,.03);
+  background:
+    rgba(255,255,255,.03);
 
   border:
     1px dashed rgba(255,255,255,.08);
@@ -1532,23 +1530,8 @@ button{
 
 
 /* =========================================================
-   TOUCH / DRAG
+   DRAG
    ========================================================= */
-
-.tile{
-  touch-action:none;
-
-  user-select:none;
-
-  -webkit-user-select:none;
-
-  -webkit-touch-callout:none;
-
-  will-change:
-    transform,
-    left,
-    top;
-}
 
 .tile.pressing{
   transform:
@@ -1562,17 +1545,8 @@ button{
     0 10px 18px rgba(0,0,0,.45);
 }
 
-.rack-slot{
-  touch-action:none;
-}
-
-#deck-tile.take-source,
-#discard-left-spot.take-source{
-  box-shadow:
-    0 0 18px rgba(34,197,94,.9);
-}
-
 @keyframes tile-land{
+
   0%{
     transform:
       scale(1.08)
@@ -1580,12 +1554,15 @@ button{
   }
 
   60%{
-    transform:scale(.98);
+    transform:
+      scale(.98);
   }
 
   100%{
-    transform:scale(1);
+    transform:
+      scale(1);
   }
+
 }
 
 .tile.land{
@@ -1610,7 +1587,7 @@ button{
 
 
 /* =========================================================
-   1100px
+   TABLET
    ========================================================= */
 
 @media(max-width:1100px){
@@ -1636,10 +1613,11 @@ button{
 
   .ad-top,
   .ad-bottom{
-    width:min(
-      550px,
-      calc(100vw - 16px)
-    );
+    width:
+      min(
+        550px,
+        calc(100% - 16px)
+      );
   }
 
 }
@@ -1701,7 +1679,8 @@ button{
   }
 
   .rack-row{
-    width:calc(100% - 8px);
+    width:
+      calc(100% - 8px);
 
     max-width:none;
 
@@ -1721,7 +1700,7 @@ button{
 
 
 /* =========================================================
-   700px - MOBİL
+   MOBİL
    ========================================================= */
 
 @media(max-width:700px){
@@ -1734,6 +1713,9 @@ button{
   .ad-top,
   .ad-bottom{
     height:50px;
+  }
+
+  .ad-top{
     top:3px;
   }
 
@@ -1793,55 +1775,38 @@ button{
   }
 
 
-  /* MOBİL DISCARD DÜZENİ */
+  /* =====================================================
+     MOBİLDE DE AYNI REFERANS MANTIĞI
+     ===================================================== */
 
   #discard-top-spot{
-    top:25%;
-    left:50%;
+    top:3%;
+    left:4%;
   }
 
   #discard-left-spot{
-    top:55%;
-    left:6%;
+    top:60%;
+    left:4%;
   }
 
   #discard-right-spot{
-    top:55%;
-    right:6%;
+    top:3%;
+    right:4%;
   }
 
   #discard-player-spot{
-    bottom:12px;
-    left:62%;
-  }
-
-
-  /*
-    Mobilde deste ve gösterge
-    birbirine girmesin.
-  */
-
-  .deck-group{
-    top:14%;
-    left:8%;
-  }
-
-  .indicator-group{
-    top:14%;
-    right:8%;
+    top:64%;
+    right:4%;
   }
 
 
   #center-area{
-    top:0;
-    left:0;
+    top:42%;
 
-    transform:none;
-  }
+    padding:
+      7px 8px;
 
-  .center-card-group#finish-drop-zone{
-    left:50%;
-    top:50%;
+    gap:7px;
 
     transform:
       translate(-50%,-50%)
@@ -1849,7 +1814,6 @@ button{
 
     transform-origin:center;
   }
-
 
   #rack-container{
     height:126px;
@@ -1914,7 +1878,7 @@ button{
 
 
 /* =========================================================
-   390px VE ALTI
+   ÇOK DAR EKRAN
    ========================================================= */
 
 @media(max-width:390px){
@@ -1925,42 +1889,25 @@ button{
 
   .status-pill{
     max-width:38%;
+
     font-size:9px;
   }
 
   .header-btn{
     font-size:9px;
+
     padding:5px;
   }
 
-
-  .deck-group{
-    left:5%;
-  }
-
-  .indicator-group{
-    right:5%;
-  }
-
-
-  .center-card-group#finish-drop-zone{
+  #center-area{
     transform:
       translate(-50%,-50%)
       scale(.70);
   }
 
-
-  #discard-left-spot{
-    left:5%;
-  }
-
-  #discard-right-spot{
-    right:5%;
-  }
-
-
   .rack-row{
-    width:calc(100% - 4px);
+    width:
+      calc(100% - 4px);
   }
 
   .rack-slot{
@@ -1972,6 +1919,29 @@ button{
     height:44px;
 
     font-size:15px;
+  }
+
+
+  /* DAR EKRANDA DA BEYAZ İŞARETLERİN MANTIĞI */
+
+  #discard-top-spot{
+    left:5%;
+    top:3%;
+  }
+
+  #discard-left-spot{
+    left:5%;
+    top:60%;
+  }
+
+  #discard-right-spot{
+    right:5%;
+    top:3%;
+  }
+
+  #discard-player-spot{
+    right:5%;
+    top:64%;
   }
 
 }
