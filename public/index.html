@@ -4,118 +4,642 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Düz Okey VIP Party</title>
+
 <link rel="stylesheet" href="style.css">
+
 <script src="/socket.io/socket.io.js"></script>
 </head>
+
 <body>
 
-<!-- REKLAM ÇERÇEVESİ: bütün sahnelerde sabit kalır -->
-<div class="ad-slot ad-top"><span>REKLAM</span></div>
-<div class="ad-slot ad-left"><span>REKLAM</span></div>
-<div class="ad-slot ad-right"><span>REKLAM</span></div>
-<div class="ad-slot ad-bottom"><span>REKLAM</span></div>
+<!-- =========================================================
+     REKLAMLAR
+     ========================================================= -->
+
+<div class="ad-slot ad-top">
+    <span>REKLAM</span>
+</div>
+
+<div class="ad-slot ad-left">
+    <span>REKLAM</span>
+</div>
+
+<div class="ad-slot ad-right">
+    <span>REKLAM</span>
+</div>
+
+<div class="ad-slot ad-bottom">
+    <span>REKLAM</span>
+</div>
+
+
+<!-- =========================================================
+     ANA UYGULAMA
+     ========================================================= -->
 
 <div id="app-content">
-  <header class="top-navbar">
-    <div class="brand-logo"><span class="tile-icon"></span>DÜZ OKEY VIP</div>
-    <div class="status-pill"><span class="status-dot"></span><span id="status-text">Oyun yükleniyor...</span></div>
-    <div class="header-actions">
-      <button class="header-btn" id="voiceBtn">🎤 Sesli Sohbet</button>
-      <button class="header-btn" id="chatBtn">💬 Chat</button>
-      <button class="header-btn" id="soundBtn"><span id="sound-icon">🔊</span> <span id="sound-text">Ses: AÇIK</span></button>
-    </div>
-  </header>
 
-  <main id="game-board">
-    <div class="player-badge" id="seat-top">
-      <div class="player-avatar">👩</div><div class="player-info"><div class="player-name" id="name-top">Boş</div><div class="player-score" id="score-top">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-top"></div></div></div>
-    </div>
-    <div class="player-badge" id="seat-left">
-      <div class="player-avatar">👨‍✈️</div><div class="player-info"><div class="player-name" id="name-left">Boş</div><div class="player-score" id="score-left">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-left"></div></div></div>
-    </div>
-    <div class="player-badge" id="seat-bottom">
-      <div class="player-avatar">👤</div><div class="player-info"><div class="player-name" id="name-player">Siz</div><div class="player-score" id="score-player">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-player"></div></div></div>
-    </div>
-    <div class="player-badge" id="seat-right">
-      <div class="player-avatar">👨</div><div class="player-info"><div class="player-name" id="name-right">Boş</div><div class="player-score" id="score-right">TAŞ: 0</div><div class="timer-bar"><div class="timer-fill" id="timer-right"></div></div></div>
+
+    <!-- =====================================================
+         OYUN MASASI
+         ===================================================== -->
+
+    <main id="game-board">
+
+
+        <!-- =================================================
+             OYUNCULAR
+             ================================================= -->
+
+        <div class="player-badge" id="seat-top">
+
+            <div class="player-avatar">
+                👩
+            </div>
+
+            <div class="player-info">
+
+                <div
+                    class="player-name"
+                    id="name-top"
+                >
+                    Boş
+                </div>
+
+                <div
+                    class="player-score"
+                    id="score-top"
+                >
+                    TAŞ: 0
+                </div>
+
+                <div class="timer-bar">
+                    <div
+                        class="timer-fill"
+                        id="timer-top"
+                    ></div>
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="player-badge" id="seat-left">
+
+            <div class="player-avatar">
+                👨‍✈️
+            </div>
+
+            <div class="player-info">
+
+                <div
+                    class="player-name"
+                    id="name-left"
+                >
+                    Boş
+                </div>
+
+                <div
+                    class="player-score"
+                    id="score-left"
+                >
+                    TAŞ: 0
+                </div>
+
+                <div class="timer-bar">
+                    <div
+                        class="timer-fill"
+                        id="timer-left"
+                    ></div>
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="player-badge" id="seat-bottom">
+
+            <div class="player-avatar">
+                👤
+            </div>
+
+            <div class="player-info">
+
+                <div
+                    class="player-name"
+                    id="name-player"
+                >
+                    Siz
+                </div>
+
+                <div
+                    class="player-score"
+                    id="score-player"
+                >
+                    TAŞ: 0
+                </div>
+
+                <div class="timer-bar">
+                    <div
+                        class="timer-fill"
+                        id="timer-player"
+                    ></div>
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="player-badge" id="seat-right">
+
+            <div class="player-avatar">
+                👨
+            </div>
+
+            <div class="player-info">
+
+                <div
+                    class="player-name"
+                    id="name-right"
+                >
+                    Boş
+                </div>
+
+                <div
+                    class="player-score"
+                    id="score-right"
+                >
+                    TAŞ: 0
+                </div>
+
+                <div class="timer-bar">
+                    <div
+                        class="timer-fill"
+                        id="timer-right"
+                    ></div>
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- =================================================
+             TAŞ ATMA NOKTALARI
+             ================================================= -->
+
+        <div
+            class="discard-spot"
+            id="discard-top-spot"
+        ></div>
+
+        <div
+            class="discard-spot"
+            id="discard-left-spot"
+        ></div>
+
+        <div
+            class="discard-spot"
+            id="discard-player-spot"
+        ></div>
+
+        <div
+            class="discard-spot"
+            id="discard-right-spot"
+        ></div>
+
+
+        <!-- =================================================
+             MERKEZ
+             ================================================= -->
+
+        <div id="center-area">
+
+
+            <!-- DESTE -->
+
+            <div class="center-card-group">
+
+                <div
+                    class="tile tile-back"
+                    id="deck-tile"
+                >
+                    <span id="deck-count">0</span>
+                </div>
+
+                <span class="center-card-label">
+                    DESTE
+                </span>
+
+            </div>
+
+
+            <!-- GÖSTERGE -->
+
+            <div class="center-card-group">
+
+                <div id="gosterge-holder"></div>
+
+                <span class="center-card-label">
+                    GÖSTERGE
+                </span>
+
+            </div>
+
+
+            <!-- OKEY / BİTİŞ -->
+
+            <div
+                class="center-card-group"
+                id="finish-drop-zone"
+            >
+
+                <div id="okey-holder"></div>
+
+                <span class="center-card-label finish-label">
+                    🎯 BİTİŞ / OKEY AT
+                </span>
+
+            </div>
+
+
+        </div>
+
+    </main>
+
+
+    <!-- =====================================================
+         ISTAKA
+         ===================================================== -->
+
+    <div id="rack-container">
+
+
+        <!-- =================================================
+             SOL KONTROL
+             SADECE OTO DÜZELT
+             ================================================= -->
+
+        <button
+            class="btn-action rack-auto-sort"
+            id="sortSeriBtn"
+        >
+            ⚡ OTO DÜZELT
+        </button>
+
+
+        <!-- =================================================
+             OYUNCU TAŞLARI
+             ================================================= -->
+
+        <div
+            class="rack-row"
+            id="rack-row-1"
+        ></div>
+
+        <div
+            class="rack-row"
+            id="rack-row-2"
+        ></div>
+
+
+        <!-- =================================================
+             SAĞ KONTROLLER
+             ================================================= -->
+
+        <div class="rack-controls">
+
+            <button
+                class="header-btn"
+                id="voiceBtn"
+            >
+                🎤 Sesli Sohbet
+            </button>
+
+            <button
+                class="header-btn"
+                id="chatBtn"
+            >
+                💬 Chat
+            </button>
+
+            <button
+                class="header-btn"
+                id="soundBtn"
+            >
+                <span id="sound-icon">
+                    🔊
+                </span>
+
+                <span id="sound-text">
+                    Ses: AÇIK
+                </span>
+            </button>
+
+        </div>
+
+
     </div>
 
-    <div class="discard-spot" id="discard-top-spot"></div>
-    <div class="discard-spot" id="discard-left-spot"></div>
-    <div class="discard-spot" id="discard-player-spot"></div>
-    <div class="discard-spot" id="discard-right-spot"></div>
-
-    <div id="center-area">
-      <div class="center-card-group">
-        <div class="tile tile-back" id="deck-tile"><span id="deck-count">0</span></div>
-        <span class="center-card-label">DESTE</span>
-      </div>
-      <div class="center-card-group">
-        <div id="gosterge-holder"></div>
-        <span class="center-card-label">GÖSTERGE</span>
-      </div>
-      <div class="center-card-group" id="finish-drop-zone">
-        <div id="okey-holder"></div>
-        <span class="center-card-label finish-label">🎯 BİTİŞ / OKEY AT</span>
-      </div>
-    </div>
-  </main>
-
-  <div id="rack-container">
-    <div class="rack-row" id="rack-row-1"></div>
-    <div class="rack-row" id="rack-row-2"></div>
-  </div>
-
-  <div class="rack-action-title">HAMLELER</div>
-  <footer class="action-bar">
-    <button class="btn-action" id="sortSeriBtn">⚡ OTO DÜZELT</button>
-    <button class="btn-action" id="sortColorBtn">🎨 Renge Göre</button>
-    <button class="btn-action" id="sortNumberBtn">🔢 Sayıya Göre</button>
-    <button class="btn-action" id="discardBtn">🀄 TAŞI AT</button>
-    <button class="btn-action btn-finish" id="finishBtn">🏆 OKEY AT / BİTİR</button>
-  </footer>
 </div>
 
-<!-- LOBBY -->
-<div class="scene-overlay" id="online-lobby">
-  <div class="online-card">
-    <div class="online-title">DÜZ OKEY VIP</div>
-    <div class="online-subtitle">Arkadaşlarınla aynı masada oyna</div>
-    <div class="online-tabs"><button class="online-tab active" id="createTab">ODA KUR</button><button class="online-tab" id="joinTab">ODAYA KATIL</button></div>
-    <div class="online-panel" id="createPanel"><label>Adın</label><input id="nameCreate" maxlength="20" placeholder="Oyuncu"><button class="online-btn primary" id="createRoom">YENİ ODA AÇ</button><button class="online-btn secondary" id="quickPlay">HIZLI OYUN (BOTLAR)</button></div>
-    <div class="online-panel" id="joinPanel" hidden><label>Adın</label><input id="nameJoin" maxlength="20" placeholder="Oyuncu"><label>Oda Kodu</label><input id="roomCode" maxlength="5" placeholder="K7X2M"><button class="online-btn primary" id="joinRoom">ODAYA KATIL</button></div>
-    <div class="online-error" id="onlineError"></div>
-  </div>
+
+<!-- =========================================================
+     LOBBY
+     ========================================================= -->
+
+<div
+    class="scene-overlay"
+    id="online-lobby"
+>
+
+    <div class="online-card">
+
+        <div class="online-title">
+            DÜZ OKEY VIP
+        </div>
+
+        <div class="online-subtitle">
+            Arkadaşlarınla aynı masada oyna
+        </div>
+
+        <div class="online-tabs">
+
+            <button
+                class="online-tab active"
+                id="createTab"
+            >
+                ODA KUR
+            </button>
+
+            <button
+                class="online-tab"
+                id="joinTab"
+            >
+                ODAYA KAT
+            </button>
+
+        </div>
+
+
+        <div
+            class="online-panel"
+            id="createPanel"
+        >
+
+            <label>
+                Adın
+            </label>
+
+            <input
+                id="nameCreate"
+                maxlength="20"
+                placeholder="Oyuncu"
+            >
+
+            <button
+                class="online-btn primary"
+                id="createRoom"
+            >
+                YENİ ODA AÇ
+            </button>
+
+            <button
+                class="online-btn secondary"
+                id="quickPlay"
+            >
+                HIZLI OYUN (BOTLAR)
+            </button>
+
+        </div>
+
+
+        <div
+            class="online-panel"
+            id="joinPanel"
+            hidden
+        >
+
+            <label>
+                Adın
+            </label>
+
+            <input
+                id="nameJoin"
+                maxlength="20"
+                placeholder="Oyuncu"
+            >
+
+            <label>
+                Oda Kodu
+            </label>
+
+            <input
+                id="roomCode"
+                maxlength="5"
+                placeholder="K7X2M"
+            >
+
+            <button
+                class="online-btn primary"
+                id="joinRoom"
+            >
+                ODAYA KATIL
+            </button>
+
+        </div>
+
+
+        <div
+            class="online-error"
+            id="onlineError"
+        ></div>
+
+    </div>
+
 </div>
 
-<!-- WAITING -->
-<div class="scene-overlay" id="waiting-overlay" hidden>
-  <div class="online-card waiting-card">
-    <div class="online-title">ODA <span id="waitingCode"></span></div>
-    <div class="online-subtitle">4 koltuk dolunca oyun başlar</div>
-    <div class="seat-grid-vip" id="seatGrid"></div>
-    <div class="waiting-players" id="waitingPlayers"></div>
-    <div class="waiting-actions"><button class="online-btn secondary" id="spectatorBtn">İZLEYİCİ OL</button><button class="online-btn primary" id="startGame">OYUNU BAŞLAT</button></div>
-  </div>
+
+<!-- =========================================================
+     WAITING
+     ========================================================= -->
+
+<div
+    class="scene-overlay"
+    id="waiting-overlay"
+    hidden
+>
+
+    <div class="online-card waiting-card">
+
+        <div class="online-title">
+            ODA <span id="waitingCode"></span>
+        </div>
+
+        <div class="online-subtitle">
+            4 koltuk dolunca oyun başlar
+        </div>
+
+        <div
+            class="seat-grid-vip"
+            id="seatGrid"
+        ></div>
+
+        <div
+            class="waiting-players"
+            id="waitingPlayers"
+        ></div>
+
+        <div class="waiting-actions">
+
+            <button
+                class="online-btn secondary"
+                id="spectatorBtn"
+            >
+                İZLEYİCİ OL
+            </button>
+
+            <button
+                class="online-btn primary"
+                id="startGame"
+            >
+                OYUNU BAŞLAT
+            </button>
+
+        </div>
+
+    </div>
+
 </div>
 
-<!-- CHAT -->
-<aside class="chat-panel" id="chatPanel" hidden>
-  <div class="chat-head"><b>PARTY CHAT</b><button id="chatClose">✕</button></div>
-  <div class="chat-messages" id="chatMessages"></div>
-  <form id="chatForm"><input id="chatInput" maxlength="500" autocomplete="off" placeholder="Mesaj yaz..."><button>Gönder</button></form>
+
+<!-- =========================================================
+     CHAT
+     ========================================================= -->
+
+<aside
+    class="chat-panel"
+    id="chatPanel"
+    hidden
+>
+
+    <div class="chat-head">
+
+        <b>
+            PARTY CHAT
+        </b>
+
+        <button id="chatClose">
+            ✕
+        </button>
+
+    </div>
+
+    <div
+        class="chat-messages"
+        id="chatMessages"
+    ></div>
+
+    <form id="chatForm">
+
+        <input
+            id="chatInput"
+            maxlength="500"
+            autocomplete="off"
+            placeholder="Mesaj yaz..."
+        >
+
+        <button>
+            Gönder
+        </button>
+
+    </form>
+
 </aside>
 
-<!-- MANUAL WIN -->
-<div class="modal-overlay" id="manualWinDialog" hidden>
-  <div class="modal-card"><h3 id="manualWinTitle">Elini açtı</h3><div class="manual-win-tiles" id="manualWinTiles"></div><div class="modal-actions" id="manualWinActions"></div></div>
+
+<!-- =========================================================
+     MANUAL WIN
+     ========================================================= -->
+
+<div
+    class="modal-overlay"
+    id="manualWinDialog"
+    hidden
+>
+
+    <div class="modal-card">
+
+        <h3 id="manualWinTitle">
+            Elini açtı
+        </h3>
+
+        <div
+            class="manual-win-tiles"
+            id="manualWinTiles"
+        ></div>
+
+        <div
+            class="modal-actions"
+            id="manualWinActions"
+        ></div>
+
+    </div>
+
 </div>
 
-<div class="modal-overlay" id="game-modal" hidden>
-  <div class="modal-card"><div class="modal-title" id="modal-title">🏆 OYUN BİTTİ</div><div class="modal-body" id="modal-body"></div><button class="btn-modal" id="newHandBtn">YENİ EL BAŞLAT</button></div>
+
+<!-- =========================================================
+     GAME MODAL
+     ========================================================= -->
+
+<div
+    class="modal-overlay"
+    id="game-modal"
+    hidden
+>
+
+    <div class="modal-card">
+
+        <div
+            class="modal-title"
+            id="modal-title"
+        >
+            🏆 OYUN BİTTİ
+        </div>
+
+        <div
+            class="modal-body"
+            id="modal-body"
+        ></div>
+
+        <button
+            class="btn-modal"
+            id="newHandBtn"
+        >
+            YENİ EL BAŞLAT
+        </button>
+
+    </div>
+
 </div>
 
-<div class="toast" id="toast" hidden></div>
+
+<!-- =========================================================
+     TOAST
+     ========================================================= -->
+
+<div
+    class="toast"
+    id="toast"
+    hidden
+></div>
+
+
 <script src="/client.js"></script>
+
 </body>
 </html>
