@@ -1906,3 +1906,292 @@ button{
 
     -webkit-touch-callout:none;
 }
+
+
+/* =========================================================
+   ISTAKA KONTROLLERİ - SON DÜZELTME
+   ========================================================= */
+
+/* Istaka alanı kesin olarak referans noktası olsun */
+#rack-container{
+    position:relative !important;
+
+    display:flex !important;
+    flex-direction:column !important;
+
+    justify-content:center !important;
+    align-items:center !important;
+
+    min-height:146px !important;
+    height:146px !important;
+
+    padding:7px 0 !important;
+
+    overflow:visible !important;
+}
+
+
+/* =========================================================
+   TAŞLAR
+   SOL VE SAĞDA BUTONLARA BOŞLUK BIRAK
+   ========================================================= */
+
+#rack-container .rack-row{
+    position:relative;
+
+    width:calc(100% - 280px) !important;
+    max-width:calc(100% - 280px) !important;
+
+    margin-left:auto !important;
+    margin-right:auto !important;
+
+    z-index:20;
+}
+
+
+/* =========================================================
+   OTO DÜZELT
+   ISTAKANIN SOL BOŞLUĞU
+   ========================================================= */
+
+#rack-container .rack-auto-sort{
+    position:absolute !important;
+
+    left:12px !important;
+    right:auto !important;
+
+    top:50% !important;
+    bottom:auto !important;
+
+    transform:translateY(-50%) !important;
+
+    width:112px !important;
+    min-width:112px !important;
+
+    height:38px !important;
+
+    margin:0 !important;
+
+    z-index:100 !important;
+
+    display:flex !important;
+
+    align-items:center !important;
+    justify-content:center !important;
+
+    background:#1c2620 !important;
+
+    border:1px solid rgba(255,255,255,.14) !important;
+
+    border-radius:8px !important;
+
+    color:#e2e8f0 !important;
+
+    font-size:10px !important;
+    font-weight:700 !important;
+
+    white-space:nowrap !important;
+
+    box-shadow:
+        0 3px 9px rgba(0,0,0,.45) !important;
+}
+
+
+/* =========================================================
+   SAĞDAKİ BUTONLAR
+   ISTAKANIN SAĞ BOŞLUĞU
+   ========================================================= */
+
+#rack-container .rack-controls{
+    position:absolute !important;
+
+    left:auto !important;
+    right:12px !important;
+
+    top:50% !important;
+    bottom:auto !important;
+
+    transform:translateY(-50%) !important;
+
+    width:auto !important;
+
+    height:38px !important;
+
+    margin:0 !important;
+
+    z-index:100 !important;
+
+    display:flex !important;
+
+    align-items:center !important;
+    justify-content:flex-end !important;
+
+    gap:5px !important;
+}
+
+
+/* Sağdaki butonların boyutu */
+
+#rack-container .rack-controls .header-btn{
+    position:relative !important;
+
+    top:auto !important;
+    bottom:auto !important;
+
+    transform:none !important;
+
+    height:38px !important;
+
+    margin:0 !important;
+
+    padding:7px 9px !important;
+
+    background:#1c2620 !important;
+
+    border:1px solid rgba(255,255,255,.14) !important;
+
+    border-radius:8px !important;
+
+    color:#fff !important;
+
+    font-size:10px !important;
+
+    font-weight:700 !important;
+
+    white-space:nowrap !important;
+
+    display:flex !important;
+
+    align-items:center !important;
+    justify-content:center !important;
+
+    box-shadow:
+        0 3px 9px rgba(0,0,0,.4) !important;
+}
+
+
+/* Hover */
+
+#rack-container .rack-auto-sort:hover,
+#rack-container .rack-controls .header-btn:hover{
+    background:#29372f !important;
+}
+
+
+/* =========================================================
+   MOBİL
+   ========================================================= */
+
+@media(max-width:900px){
+
+    #rack-container{
+        height:142px !important;
+        min-height:142px !important;
+    }
+
+    #rack-container .rack-row{
+        width:calc(100% - 230px) !important;
+        max-width:calc(100% - 230px) !important;
+    }
+
+    #rack-container .rack-auto-sort{
+        left:7px !important;
+
+        width:94px !important;
+        min-width:94px !important;
+
+        height:34px !important;
+
+        font-size:9px !important;
+    }
+
+    #rack-container .rack-controls{
+        right:7px !important;
+
+        height:34px !important;
+
+        gap:3px !important;
+    }
+
+    #rack-container .rack-controls .header-btn{
+        height:34px !important;
+
+        padding:5px 6px !important;
+
+        font-size:9px !important;
+    }
+
+}
+
+
+@media(max-width:700px){
+
+    #rack-container{
+        height:126px !important;
+        min-height:126px !important;
+    }
+
+    #rack-container .rack-row{
+        width:calc(100% - 180px) !important;
+        max-width:calc(100% - 180px) !important;
+    }
+
+    #rack-container .rack-auto-sort{
+        left:4px !important;
+
+        width:76px !important;
+        min-width:76px !important;
+
+        height:31px !important;
+
+        font-size:8px !important;
+    }
+
+    #rack-container .rack-controls{
+        right:4px !important;
+
+        height:31px !important;
+
+        gap:2px !important;
+    }
+
+    #rack-container .rack-controls .header-btn{
+        height:31px !important;
+
+        padding:4px 5px !important;
+
+        font-size:8px !important;
+    }
+
+}
+
+
+@media(max-width:390px){
+
+    #rack-container .rack-row{
+        width:calc(100% - 154px) !important;
+        max-width:calc(100% - 154px) !important;
+    }
+
+    #rack-container .rack-auto-sort{
+        left:2px !important;
+
+        width:66px !important;
+        min-width:66px !important;
+
+        font-size:7px !important;
+    }
+
+    #rack-container .rack-controls{
+        right:2px !important;
+
+        gap:1px !important;
+    }
+
+    #rack-container .rack-controls .header-btn{
+        padding:3px 4px !important;
+
+        font-size:7px !important;
+    }
+
+}
