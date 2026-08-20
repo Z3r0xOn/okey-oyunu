@@ -6,17 +6,21 @@
    ========================================================= */
 
 :root{
-    --ad-top:76px;
-    --ad-bottom:76px;
-    --side-w:132px;
+    --ad-top:0px;
+    --ad-bottom:0px;
+    --side-w:0px;
 
     --gold:#ffc107;
-    --green:#115732;
+    --green:#255837;
     --dark:#050a07;
-    --wood:#2b1810;
+    --wood:#c68f52;
+    --wood-dark:#7a5228;
+    --cream:#f4efe1;
+    --ink:#1c1c1c;
+    --blue-accent:#4a75a4;
 
-    --tile-w:40px;
-    --tile-h:56px;
+    --tile-w:44px;
+    --tile-h:62px;
 }
 
 
@@ -62,29 +66,7 @@ button{
    ========================================================= */
 
 .ad-slot{
-    position:fixed;
-
-    z-index:500;
-
-    display:flex;
-    align-items:center;
-    justify-content:center;
-
-    border:1px solid rgba(255,255,255,.2);
-
-    border-radius:5px;
-
-    background:rgba(4,15,28,.88);
-
-    color:rgba(255,255,255,.22);
-
-    font-size:10px;
-
-    letter-spacing:1px;
-
-    overflow:hidden;
-
-    pointer-events:none;
+    display:none;
 }
 
 
@@ -165,16 +147,7 @@ button{
 
     position:relative;
 
-    background:
-        radial-gradient(
-            circle at center,
-            #115732 0%,
-            #083b20 70%,
-            #031e0f 100%
-        );
-
-    box-shadow:
-        inset 0 0 100px rgba(0,0,0,.8);
+    background:var(--green);
 
     overflow:hidden;
 }
@@ -183,21 +156,7 @@ button{
 /* MASA DOKUSU */
 
 #game-board:before{
-    content:"";
-
-    position:absolute;
-
-    inset:0;
-
-    background-image:
-        radial-gradient(
-            rgba(255,255,255,.03) 1px,
-            transparent 1px
-        );
-
-    background-size:14px 14px;
-
-    pointer-events:none;
+    content:none;
 }
 
 
@@ -208,13 +167,13 @@ button{
 .player-badge{
     position:absolute;
 
-    background:rgba(13,18,15,.9);
+    background:var(--cream);
 
-    border:1px solid rgba(255,255,255,.2);
+    border:2px solid var(--ink);
 
-    border-radius:8px;
+    border-radius:10px;
 
-    padding:6px 12px;
+    padding:6px 14px 6px 6px;
 
     display:flex;
 
@@ -223,7 +182,7 @@ button{
     gap:10px;
 
     box-shadow:
-        0 6px 16px rgba(0,0,0,.5);
+        0 4px 10px rgba(0,0,0,.35);
 
     z-index:10;
 
@@ -231,14 +190,14 @@ button{
 }
 
 .player-avatar{
-    width:36px;
-    height:36px;
+    width:34px;
+    height:34px;
 
-    border-radius:6px;
+    border-radius:50%;
 
-    background:#1a2820;
+    background:#fff;
 
-    border:1px solid var(--gold);
+    border:2px solid var(--ink);
 
     display:flex;
 
@@ -246,6 +205,13 @@ button{
     align-items:center;
 
     font-size:18px;
+
+    flex-shrink:0;
+}
+
+.player-avatar svg{
+    width:20px;
+    height:20px;
 }
 
 .player-info{
@@ -253,15 +219,17 @@ button{
 
     flex-direction:column;
 
-    gap:2px;
+    gap:4px;
 
-    min-width:80px;
+    min-width:84px;
 }
 
 .player-name{
-    font-size:12px;
+    font-size:13px;
 
-    font-weight:700;
+    font-weight:800;
+
+    color:var(--ink);
 }
 
 .player-score{
@@ -269,20 +237,22 @@ button{
 
     font-weight:700;
 
-    color:var(--gold);
+    color:#6b6355;
 }
 
 .timer-bar{
     width:100%;
-    height:4px;
+    height:7px;
 
-    background:rgba(255,255,255,.15);
+    background:#e6e0cd;
 
-    border-radius:2px;
+    border:1px solid rgba(0,0,0,.15);
+
+    border-radius:4px;
 
     overflow:hidden;
 
-    margin-top:2px;
+    margin-top:1px;
 }
 
 .timer-fill{
@@ -290,12 +260,7 @@ button{
 
     width:100%;
 
-    background:
-        linear-gradient(
-            90deg,
-            #00f2fe,
-            #4facfe
-        );
+    background:#7bc852;
 
     transition:
         width .2s linear;
@@ -352,21 +317,11 @@ button{
     width:var(--tile-w);
     height:var(--tile-h);
 
-    background:
-        linear-gradient(
-            180deg,
-            #fff 0%,
-            #f4eee2 85%,
-            #dfd1b8 100%
-        );
+    background:#f9f7f2;
 
-    border-radius:5px;
+    border-radius:6px;
 
-    border-top:1px solid #fff;
-    border-left:1px solid #fff;
-
-    border-right:2px solid #b8a68d;
-    border-bottom:4px solid #99876e;
+    border:2.5px solid #cfcfc7;
 
     display:flex;
 
@@ -380,7 +335,7 @@ button{
     font-size:22px;
 
     box-shadow:
-        0 4px 8px rgba(0,0,0,.4);
+        0 3px 6px rgba(0,0,0,.3);
 
     cursor:grab;
 
@@ -409,32 +364,43 @@ button{
 }
 
 .tile.red{
-    color:#d32f2f;
+    color:#d9433f;
+    border-color:#d9433f;
 }
 
 .tile.black{
-    color:#1e1e1e;
+    color:#333333;
+    border-color:#b8b8b0;
 }
 
 .tile.blue{
-    color:#1976d2;
+    color:#3f7fc4;
+    border-color:#3f7fc4;
 }
 
 .tile.yellow{
-    color:#f57c00;
+    color:#e08a2b;
+    border-color:#e08a2b;
+}
+
+.tile::after{
+    content:"•";
+    font-size:12px;
+    margin-top:-6px;
+    opacity:.9;
 }
 
 .tile.selected{
     transform:translateY(-8px);
 
-    border:2px solid var(--gold);
+    border-color:var(--gold);
 
     box-shadow:
         0 0 12px rgba(255,193,7,.8);
 }
 
 .tile.group-highlight{
-    border:2px dashed #00f2fe!important;
+    border:2.5px dashed #00f2fe!important;
 }
 
 
@@ -442,15 +408,15 @@ button{
 
 .tile.tile-back{
     background:
-        linear-gradient(
-            180deg,
-            #2b4c7e,
-            #1a335a
+        repeating-linear-gradient(
+            0deg,
+            #b7b1a0 0px,
+            #b7b1a0 5px,
+            #a89f8b 5px,
+            #a89f8b 9px
         );
 
-    border:1px solid #3d639d;
-
-    border-bottom:4px solid #10213d;
+    border:2.5px solid #8f8770;
 
     color:transparent;
 }
@@ -473,13 +439,13 @@ button{
 .discard-spot{
     position:absolute;
 
-    width:42px;
-    height:58px;
+    width:58px;
+    height:84px;
 
     border:
-        1.5px dashed rgba(255,255,255,.25);
+        3px dashed rgba(232,245,224,.85);
 
-    border-radius:6px;
+    border-radius:8px;
 
     display:flex;
 
@@ -488,7 +454,7 @@ button{
 
     z-index:5;
 
-    background:rgba(0,0,0,.15);
+    background:transparent;
 
     transition:.2s;
 }
@@ -514,41 +480,43 @@ button{
 }
 
 
-/* ÜST */
+/* ÜST SOL */
 
 #discard-top-spot{
-    top:78px;
+    top:110px;
 
-    left:50%;
+    left:16%;
 
-    transform:translateX(-50%);
+    transform:none;
 }
 
 
-/* SOL */
-
-#discard-left-spot{
-    top:100px;
-
-    left:110px;
-}
-
-
-/* BİZ */
-
-#discard-player-spot{
-    bottom:18px;
-
-    right:110px;
-}
-
-
-/* SAĞ */
+/* ÜST SAĞ */
 
 #discard-right-spot{
-    top:100px;
+    top:110px;
 
-    right:110px;
+    right:16%;
+}
+
+
+/* ALT SOL */
+
+#discard-left-spot{
+    top:auto;
+
+    bottom:170px;
+
+    left:16%;
+}
+
+
+/* ALT SAĞ (BİZ) */
+
+#discard-player-spot{
+    bottom:170px;
+
+    right:16%;
 }
 
 
@@ -565,25 +533,21 @@ button{
     transform:
         translate(-50%,-50%);
 
-    background:
-        rgba(12,30,20,.88);
+    background:transparent;
 
-    border:
-        1px solid rgba(255,255,255,.12);
+    border:none;
 
-    padding:
-        12px 22px;
+    padding:0;
 
-    border-radius:14px;
+    border-radius:0;
 
     display:flex;
 
-    gap:20px;
+    gap:10px;
 
     align-items:center;
 
-    box-shadow:
-        0 8px 24px rgba(0,0,0,.5);
+    box-shadow:none;
 
     z-index:8;
 }
@@ -599,33 +563,27 @@ button{
 }
 
 .center-card-label{
-    font-size:10px;
-
-    font-weight:700;
-
-    color:#94a3b8;
-
-    letter-spacing:.5px;
+    display:none;
 }
 
 .finish-label{
-    color:#ef4444;
+    display:none;
 }
 
 .center-card-group#finish-drop-zone{
     border:
-        2px dashed #ef4444;
+        3px dashed rgba(239,68,68,.65);
 
     background:
-        rgba(239,68,68,.1);
+        rgba(239,68,68,.08);
 
     border-radius:8px;
 
-    padding:4px 10px;
+    padding:4px;
 
     cursor:pointer;
 
-    min-width:108px;
+    min-width:0;
 
     transition:
         transform .16s,
@@ -653,6 +611,7 @@ button{
     color:#fff;
 
     font-size:16px;
+    font-weight:800;
 }
 
 
@@ -670,12 +629,15 @@ button{
     background:
         linear-gradient(
             180deg,
-            #2b1810,
-            #1a0e09
+            var(--wood),
+            #b57f45
         );
 
     border-top:
-        3px solid #4a2d1d;
+        4px solid var(--wood-dark);
+
+    border-bottom:
+        6px solid var(--wood-dark);
 
     display:flex;
 
@@ -711,14 +673,13 @@ button{
 
     gap:3px;
 
-    background:#120905;
+    background:transparent;
 
     padding:2px 6px;
 
-    border-radius:6px;
+    border-radius:0;
 
-    box-shadow:
-        inset 0 2px 6px rgba(0,0,0,.9);
+    box-shadow:none;
 
     width:fit-content;
 
@@ -728,6 +689,13 @@ button{
         calc(100% - 260px);
 
     z-index:20;
+
+    border-bottom:
+        2px solid rgba(0,0,0,.15);
+}
+
+.rack-row:last-child{
+    border-bottom:none;
 }
 
 .rack-slot{
@@ -741,11 +709,9 @@ button{
     justify-content:center;
     align-items:center;
 
-    background:
-        rgba(255,255,255,.03);
+    background:transparent;
 
-    border:
-        1px dashed rgba(255,255,255,.08);
+    border:none;
 
     flex:none;
 
@@ -790,20 +756,22 @@ button{
 
     justify-content:center;
 
-    background:#1c2620;
+    background:var(--blue-accent);
 
     border:
-        1px solid rgba(255,255,255,.14);
+        2px solid var(--ink);
 
     border-radius:8px;
 
-    color:#e2e8f0;
+    color:#fff;
 
     padding:7px 10px;
 
     font-size:10px;
 
-    font-weight:700;
+    font-weight:800;
+
+    letter-spacing:.3px;
 
     display:flex;
 
@@ -821,7 +789,7 @@ button{
 }
 
 .rack-auto-sort:hover{
-    background:#2a382f;
+    background:#5a85b4;
 
     box-shadow:
         0 4px 12px rgba(0,0,0,.45);
@@ -865,22 +833,21 @@ button{
 .rack-controls .header-btn{
     height:38px;
 
-    background:
-        rgba(28,38,32,.96);
+    background:var(--cream);
 
     border:
-        1px solid rgba(255,255,255,.14);
+        2px solid var(--ink);
 
     border-radius:8px;
 
-    color:#fff;
+    color:var(--ink);
 
     padding:
         7px 10px;
 
     font-size:10px;
 
-    font-weight:700;
+    font-weight:800;
 
     white-space:nowrap;
 
@@ -899,7 +866,7 @@ button{
 }
 
 .rack-controls .header-btn:hover{
-    background:#2a382f;
+    background:#fff;
 }
 
 .rack-controls .header-btn:active{
@@ -944,7 +911,7 @@ button{
             calc(100% - 30px)
         );
 
-    background:#0d120f;
+    background:#0d1a12;
 
     border:
         1px solid rgba(255,193,7,.35);
@@ -1069,11 +1036,11 @@ button{
 }
 
 .online-btn.primary{
-    background:var(--gold);
+    background:var(--blue-accent);
 
-    color:#000;
+    color:#fff;
 
-    border-color:var(--gold);
+    border-color:var(--ink);
 }
 
 .online-btn.secondary{
@@ -1717,26 +1684,35 @@ button{
 
     /* ATILAN TAŞLAR */
 
-    #discard-left-spot{
-        top:84px;
-
-        left:72px;
-    }
-
-    #discard-right-spot{
-        top:84px;
-
-        right:72px;
+    .discard-spot{
+        width:46px;
+        height:68px;
     }
 
     #discard-top-spot{
         top:66px;
+
+        left:10%;
+    }
+
+    #discard-right-spot{
+        top:66px;
+
+        right:10%;
+    }
+
+    #discard-left-spot{
+        top:auto;
+
+        bottom:138px;
+
+        left:10%;
     }
 
     #discard-player-spot{
-        bottom:12px;
+        bottom:138px;
 
-        right:72px;
+        right:10%;
     }
 
 
@@ -1979,16 +1955,16 @@ button{
     align-items:center !important;
     justify-content:center !important;
 
-    background:#1c2620 !important;
+    background:var(--blue-accent) !important;
 
-    border:1px solid rgba(255,255,255,.14) !important;
+    border:2px solid var(--ink) !important;
 
     border-radius:8px !important;
 
-    color:#e2e8f0 !important;
+    color:#fff !important;
 
     font-size:10px !important;
-    font-weight:700 !important;
+    font-weight:800 !important;
 
     white-space:nowrap !important;
 
@@ -2046,17 +2022,17 @@ button{
 
     padding:7px 9px !important;
 
-    background:#1c2620 !important;
+    background:var(--cream) !important;
 
-    border:1px solid rgba(255,255,255,.14) !important;
+    border:2px solid var(--ink) !important;
 
     border-radius:8px !important;
 
-    color:#fff !important;
+    color:var(--ink) !important;
 
     font-size:10px !important;
 
-    font-weight:700 !important;
+    font-weight:800 !important;
 
     white-space:nowrap !important;
 
@@ -2072,9 +2048,12 @@ button{
 
 /* Hover */
 
-#rack-container .rack-auto-sort:hover,
+#rack-container .rack-auto-sort:hover{
+    background:#5a85b4 !important;
+}
+
 #rack-container .rack-controls .header-btn:hover{
-    background:#29372f !important;
+    background:#fff !important;
 }
 
 
